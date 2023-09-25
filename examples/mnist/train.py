@@ -36,7 +36,7 @@ from typing import Optional, Callable, Any, Tuple
 
 from tqdm import tqdm
 
-from initializers import ste_initializer
+from initializers import ste_initializer, dsq_multi_bit_initializer
 from quantizers import pwl_multi_bit_quantizer
 
 Array = Any
@@ -133,7 +133,9 @@ def get_datasets(test):
 
 def create_train_state(rng, config):
   """Creates initial `TrainState`."""
-  cnn = CNN(quantizer=pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False))
+  cnn = CNN(quantizer=pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False),
+    kernel_init=dsq_multi_bit_initializer(bits=8, k=1),
+  )
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
   return train_state.TrainState.create(apply_fn=cnn.apply, params=params, tx=tx)

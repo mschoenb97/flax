@@ -29,9 +29,7 @@ class ste_initializer:
 
 class dsq_multi_bit_initializer:
 
-  def __init__(self, seed, bits, k):
-    self.seed = seed
-    self.base_initializer = initializers.HeUniform
+  def __init__(self, bits, k):
     self.bits = bits
     self._k = k
     self.max_val = None
