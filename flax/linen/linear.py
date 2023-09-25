@@ -355,6 +355,8 @@ class _Conv(Module):
   conv_general_dilated: ConvGeneralDilatedT = lax.conv_general_dilated
   conv_general_dilated_cls: Any = None
 
+  quantizer: Optional[Callable[[Array], Array]] = None
+
   @property
   def shared_weights(self) -> bool:  # type: ignore
     """Defines whether weights are shared or not between different pixels.
@@ -500,6 +502,9 @@ class _Conv(Module):
         'kernel', self.kernel_init, kernel_shape, self.param_dtype
     )
 
+    if self.quantizer is not None:
+      self.kernel = self.quantizer(self.kernel)
+
     if self.mask is not None:
       kernel *= self.mask
 
@@ -512,6 +517,8 @@ class _Conv(Module):
         bias_shape = conv_output_shape[1:]
 
       bias = self.param('bias', self.bias_init, bias_shape, self.param_dtype)
+      if self.quantizer is not None:
+        bias = self.quantizer(bias)
     else:
       bias = None
 

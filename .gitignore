@@ -13,6 +13,9 @@ build/
 .vscode/*
 /.devcontainer
 docs/**/tmp
+venv/
+requirements.txt
+
 
 # used by direnv
 .envrc

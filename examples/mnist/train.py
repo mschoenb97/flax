@@ -32,6 +32,8 @@ import numpy as np
 import optax
 import tensorflow_datasets as tfds
 
+from tqdm import tqdm
+
 
 class CNN(nn.Module):
   """A simple CNN model."""
@@ -84,7 +86,7 @@ def train_epoch(state, train_ds, batch_size, rng):
   epoch_loss = []
   epoch_accuracy = []
 
-  for perm in perms:
+  for perm in tqdm(perms):
     batch_images = train_ds['image'][perm, ...]
     batch_labels = train_ds['label'][perm, ...]
     grads, loss, accuracy = apply_model(state, batch_images, batch_labels)
@@ -96,7 +98,7 @@ def train_epoch(state, train_ds, batch_size, rng):
   return state, train_loss, train_accuracy
 
 
-def get_datasets():
+def get_datasets(test):
   """Load MNIST train and test datasets into memory."""
   ds_builder = tfds.builder('mnist')
   ds_builder.download_and_prepare()
@@ -104,6 +106,11 @@ def get_datasets():
   test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
   train_ds['image'] = jnp.float32(train_ds['image']) / 255.0
   test_ds['image'] = jnp.float32(test_ds['image']) / 255.0
+
+  if test:
+    for key in train_ds.keys():
+      train_ds[key] = train_ds[key][:len(train_ds[key]) // 50]
+      test_ds[key] = test_ds[key][:len(test_ds[key]) // 50]
   return train_ds, test_ds
 
 
@@ -127,7 +134,7 @@ def train_and_evaluate(
   Returns:
     The train state (which includes the `.params`).
   """
-  train_ds, test_ds = get_datasets()
+  train_ds, test_ds = get_datasets(config.test)
   rng = jax.random.key(0)
 
   summary_writer = tensorboard.SummaryWriter(workdir)
@@ -136,10 +143,10 @@ def train_and_evaluate(
   rng, init_rng = jax.random.split(rng)
   state = create_train_state(init_rng, config)
 
-  for epoch in range(1, config.num_epochs + 1):
+  for epoch in tqdm(range(1, config.num_epochs + 1)):
     rng, input_rng = jax.random.split(rng)
     state, train_loss, train_accuracy = train_epoch(
-        state, train_ds, config.batch_size, input_rng
+        state, train_ds, config.batch_size, input_rng,
     )
     _, test_loss, test_accuracy = apply_model(
         state, test_ds['image'], test_ds['label']
