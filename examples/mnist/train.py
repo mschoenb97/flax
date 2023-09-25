@@ -126,8 +126,8 @@ def get_datasets(test):
 
   if test:
     for key in train_ds.keys():
-      train_ds[key] = train_ds[key][:len(train_ds[key]) // 50]
-      test_ds[key] = test_ds[key][:len(test_ds[key]) // 50]
+      train_ds[key] = train_ds[key][:len(train_ds[key]) // 20]
+      test_ds[key] = test_ds[key][:len(test_ds[key]) // 20]
   return train_ds, test_ds
 
 
