@@ -11,6 +11,7 @@ from jax.nn.initializers import he_uniform
 
 from he_uniform import get_he_uniform_max_val
 
+
 class ste_initializer:
 
   def __init__(self):
@@ -24,7 +25,7 @@ class ste_initializer:
   def __call__(self, key: KeyArray,
                 shape: core.Shape,
                 dtype: DTypeLikeInexact = jnp.float_):
-    
+
     return self.init_func(key, shape, dtype)
 
 class dsq_multi_bit_initializer:
@@ -32,58 +33,53 @@ class dsq_multi_bit_initializer:
   def __init__(self, bits, k):
     self.bits = bits
     self._k = k
-    self.max_val = None
     self.init_func = he_uniform()
 
-  @property
-  def k(self):
-    return self._k / self.max_val
+  def k(self, max_val):
+    return self._k / max_val
 
-  @property
-  def delta(self):
+  def delta(self, max_val):
 
-    return (2.0 * self.max_val) / (2.0 ** self.bits - 1)
+    return (2.0 * max_val) / (2.0 ** self.bits - 1)
 
-  @property
-  def interval_integral(self):
+  def interval_integral(self, max_val):
 
-    s = 1.0 / jnp.tanh(0.5 * self.k * self.delta)
-    endpoint = self.k * self.delta / 2.0
+    s = 1.0 / jnp.tanh(0.5 * self.k(max_val) * self.delta(max_val))
+    endpoint = self.k(max_val) * self.delta(max_val) / 2.0
 
     integral = (endpoint + jnp.sinh(endpoint) * jnp.cosh(endpoint)) / (s)
-    integral = integral * 2.0 / (self.delta * (self.k ** 2))
+    integral = integral * 2.0 / (self.delta(max_val) * (self.k(max_val) ** 2))
 
     return integral
 
-  @property
-  def lr_adjustment(self):
+  def lr_adjustment(self, max_val):
 
-    return self.delta / self.interval_integral
+    return self.delta(max_val) / self.interval_integral(max_val)
 
   def remap(self, x):
 
-    i = jnp.floor((x + self.max_val) / self.delta)
+    max_val = get_he_uniform_max_val(x.shape)
+
+    i = jnp.floor((x + max_val) / self.delta(max_val))
 
     zero_point = jnp.floor((2.0 ** self.bits - 1) / 2.0)
     centered_i = i - zero_point
-    base_point = self.interval_integral * centered_i
+    base_point = self.interval_integral(max_val) * centered_i
 
-    m_i = -self.max_val + (i + 0.5) * self.delta
-    s = 1.0 / jnp.tanh(0.5 * self.k * self.delta)
-    endpoint = self.k * (x - m_i)
+    m_i = -max_val + (i + 0.5) * self.delta(max_val)
+    s = 1.0 / jnp.tanh(0.5 * self.k(max_val) * self.delta(max_val))
+    endpoint = self.k(max_val) * (x - m_i)
     increment = (endpoint + jnp.sinh(endpoint) * jnp.cosh(endpoint)) / s
-    increment = increment / (self.delta * (self.k ** 2))
+    increment = increment / (self.delta(max_val) * (self.k(max_val) ** 2))
 
     integral = base_point + increment
 
-    remap_val = self.lr_adjustment * integral
+    remap_val = self.lr_adjustment(max_val) * integral
 
     return remap_val
 
   def __call__(self, key: KeyArray,
                 shape: core.Shape,
                 dtype: DTypeLikeInexact = jnp.float_):
-
-    self.max_val = get_he_uniform_max_val(shape)
 
     return self.remap(self.init_func(key, shape, dtype))
