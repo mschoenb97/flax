@@ -503,7 +503,8 @@ class _Conv(Module):
     )
 
     if self.quantizer is not None:
-      self.kernel = self.quantizer(self.kernel)
+      self.quantizer.set_shape(kernel_shape)
+      kernel = self.quantizer(kernel)
 
     if self.mask is not None:
       kernel *= self.mask
@@ -518,6 +519,7 @@ class _Conv(Module):
 
       bias = self.param('bias', self.bias_init, bias_shape, self.param_dtype)
       if self.quantizer is not None:
+        self.quantizer.set_shape(bias_shape)
         bias = self.quantizer(bias)
     else:
       bias = None

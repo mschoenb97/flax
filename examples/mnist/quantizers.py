@@ -1,6 +1,6 @@
 from jax import numpy as jnp
 from jax import lax
-from .he_uniform import get_he_uniform_max_val
+from he_uniform import get_he_uniform_max_val
 
 class pwl_multi_bit_quantizer:
   """Pwl quantizer to match the behavior of the dsq quantizer"""

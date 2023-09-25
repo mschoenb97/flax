@@ -1,6 +1,5 @@
 from jax import numpy as jnp
 from jax import lax
-from .he_uniform import get_he_uniform_max_val
 
 import jax
 KeyArray = jax.Array
@@ -10,8 +9,9 @@ DTypeLikeInexact = Any  # DTypeLikeFloat | DTypeLikeComplex
 
 from jax.nn.initializers import he_uniform
 
+from he_uniform import get_he_uniform_max_val
 
-class ste_initializer_jax:
+class ste_initializer:
 
   def __init__(self):
 
@@ -27,7 +27,7 @@ class ste_initializer_jax:
     
     return self.init_func(key, shape, dtype)
 
-class dsq_multi_bit_initializer_jax:
+class dsq_multi_bit_initializer:
 
   def __init__(self, seed, bits, k):
     self.seed = seed

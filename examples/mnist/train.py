@@ -27,23 +27,40 @@ from flax.metrics import tensorboard
 from flax.training import train_state
 import jax
 import jax.numpy as jnp
+from jax.random import PRNGKey
 import ml_collections
 import numpy as np
 import optax
 import tensorflow_datasets as tfds
+from typing import Optional, Callable, Any, Tuple
 
 from tqdm import tqdm
+
+from initializers import ste_initializer
+from quantizers import pwl_multi_bit_quantizer
+
+Array = Any
+Shape = Tuple[int, ...]
+Dtype = Any  # this could be a real type?
+
+
 
 
 class CNN(nn.Module):
   """A simple CNN model."""
 
+  quantizer: Optional[Callable[[Array], Array]] = None
+  kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = ste_initializer()
+
+
   @nn.compact
   def __call__(self, x):
-    x = nn.Conv(features=32, kernel_size=(3, 3))(x)
+    x = nn.Conv(features=32, kernel_size=(3, 3), 
+                quantizer=self.quantizer, kernel_init=self.kernel_init)(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-    x = nn.Conv(features=64, kernel_size=(3, 3))(x)
+    x = nn.Conv(features=64, kernel_size=(3, 3), 
+                quantizer=self.quantizer, kernel_init=self.kernel_init)(x)
     x = nn.relu(x)
     x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
     x = x.reshape((x.shape[0], -1))  # flatten
@@ -116,7 +133,7 @@ def get_datasets(test):
 
 def create_train_state(rng, config):
   """Creates initial `TrainState`."""
-  cnn = CNN()
+  cnn = CNN(quantizer=pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False))
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
   return train_state.TrainState.create(apply_fn=cnn.apply, params=params, tx=tx)
