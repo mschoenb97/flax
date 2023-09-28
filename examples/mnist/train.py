@@ -38,6 +38,7 @@ from tqdm import tqdm
 
 from initializers import ste_initializer, dsq_multi_bit_initializer
 from quantizers import pwl_multi_bit_quantizer
+from train_state import CustomTrainState
 
 Array = Any
 Shape = Tuple[int, ...]
@@ -88,7 +89,8 @@ def apply_model(state, images, labels):
 
 @jax.jit
 def update_model(state, grads):
-  return state.apply_gradients(grads=grads)
+  state = state.apply_gradients(grads=grads)
+  return state.update_change_points()
 
 
 def train_epoch(state, train_ds, batch_size, rng):
@@ -133,12 +135,15 @@ def get_datasets(test):
 
 def create_train_state(rng, config):
   """Creates initial `TrainState`."""
-  cnn = CNN(quantizer=pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False),
+  quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
+  cnn = CNN(quantizer=quantizer,
     kernel_init=dsq_multi_bit_initializer(bits=8, k=1),
   )
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
-  return train_state.TrainState.create(apply_fn=cnn.apply, params=params, tx=tx)
+  # TODO: pass in quantizer from higher up
+  return CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
+                                 quantizer=quantizer)
 
 
 def train_and_evaluate(
