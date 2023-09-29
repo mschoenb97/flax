@@ -87,9 +87,12 @@ def apply_model(state, images, labels):
   return grads, loss, accuracy
 
 
-@jax.jit
+# @jax.jit
+def update_gradients(state, grads):
+  return state.apply_gradients(grads=grads)
+
 def update_model(state, grads):
-  state = state.apply_gradients(grads=grads)
+  state = update_gradients(state=state, grads=grads)
   return state.update_change_points()
 
 

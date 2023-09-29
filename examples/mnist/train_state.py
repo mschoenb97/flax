@@ -48,10 +48,10 @@ def init_change_points(weights, *, quantizer):
   points_changed = jnp.ones_like(weights)
   return _get_change_point_data(points_changed, qweights, total_batches=0)
 
-init_change_points = jax.jit(
-  init_change_points, 
-  static_argnums=(0,), 
-  static_argnames=('quantizer',))
+# init_change_points = jax.jit(
+#   init_change_points, 
+#   static_argnums=(0,), 
+#   static_argnames=('quantizer',))
 
 @conv_path_only
 def get_points_changed_tensor(new_q_tensor, old_q_tensor):
@@ -62,21 +62,106 @@ def get_points_changed_tensor(new_q_tensor, old_q_tensor):
 def get_quantized(weights, *, quantizer):
   return quantizer(weights)
 
-get_quantized = jax.jit(
-  get_quantized, 
-  static_argnums=(0,), 
-  static_argnames=('quantizer',))
+# get_quantized = jax.jit(
+#   get_quantized, 
+#   static_argnums=(0,), 
+#   static_argnames=('quantizer',))
 
 @conv_path_only
 def append(x0, x1):
   return jnp.concatenate((x0, x1), axis=0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class StoreWeightsCallback(Callback):
+  """Tracks weights and weight distances. Ignores the last two layers, as they are unquantized"""
+
+  def __init__(self, epochs_interval):
+    super().__init__()
+    self.epochs_interval = epochs_interval
+    self.stored_weights = {}
+    self.stored_distances = {}  # To store the distance traveled at each epoch
+    self.distance_traveled = 0.0  # Initialize distance_traveled attribute as a scalar
+    self.prev_weights = None  # To store the previous weights for distance calculation
+
+  def on_train_begin(self, logs=None):
+    # Initialize distance_traveled as 0.0 at the beginning of training
+    self.distance_traveled = 0.0
+
+  def on_epoch_end(self, epoch, logs=None):
+    if (epoch + 1) % self.epochs_interval == 0:
+      self.stored_weights[epoch + 1] = self.model.get_weights()[:-2]
+      # Store the current distance_traveled
+      self.stored_distances[epoch + 1] = self.distance_traveled
+
+  def on_batch_end(self, batch, logs=None):
+    # Get the current weights
+    current_weights = self.model.get_weights()
+    # If prev_weights is None, initialize it with the current weights
+    if self.prev_weights is None:
+      self.prev_weights = current_weights
+    # Calculate the sum of absolute differences for all weights and update distance_traveled
+    for curr_w, prev_w in zip(current_weights[:-2], self.prev_weights[:-2]):
+      max_val = get_he_uniform_max_val(curr_w.shape)
+      self.distance_traveled += tf.reduce_sum(
+          tf.math.abs(curr_w - prev_w) / max_val)
+    # Update prev_weights with current_weights for the next batch
+    self.prev_weights = current_weights
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class CustomTrainState(train_state.TrainState):
 
   quantizer: Callable[[Array], Array]
   change_points: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
+  prev_params: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
+  epochs_interval: int
 
+  stored_weights: dict = {}
+  stored_distances: dict = {}
+  distance_traveled: float = 0
   total_batches: int = 0
 
   def update_change_points(self):
@@ -98,7 +183,7 @@ class CustomTrainState(train_state.TrainState):
     )
 
   @classmethod
-  def create(cls, *, apply_fn, params, tx, quantizer, **kwargs):
+  def create(cls, *, apply_fn, params, tx, quantizer, epochs_interval, **kwargs):
     """Creates a new instance with `step=0` and initialized `opt_state`."""
     opt_state = tx.init(params)
 
@@ -114,6 +199,7 @@ class CustomTrainState(train_state.TrainState):
         quantizer=quantizer,
         change_points=tree_map_with_path(partial_init_change_points, params),
         last_quantized=tree_map_with_path(partial_get_quantized, params),
+        epochs_interval=epochs_interval,
         **kwargs,
     )
 
