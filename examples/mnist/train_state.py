@@ -6,7 +6,9 @@ from flax.training import train_state
 from jax.tree_util import tree_map_with_path
 from jax import numpy as jnp
 from flax import struct, core
+import jax
 from functools import partial, wraps
+
 
 def conv_path_only(func):
   @wraps(func)
@@ -46,14 +48,24 @@ def init_change_points(weights, *, quantizer):
   points_changed = jnp.ones_like(weights)
   return _get_change_point_data(points_changed, qweights, total_batches=0)
 
+init_change_points = jax.jit(
+  init_change_points, 
+  static_argnums=(0,), 
+  static_argnames=('quantizer',))
+
 @conv_path_only
 def get_points_changed_tensor(new_q_tensor, old_q_tensor):
 
   return jnp.logical_not(jnp.isclose(new_q_tensor, old_q_tensor))
-  
+
 @conv_path_only
-def get_quantized(weights, quantizer):
+def get_quantized(weights, *, quantizer):
   return quantizer(weights)
+
+get_quantized = jax.jit(
+  get_quantized, 
+  static_argnums=(0,), 
+  static_argnames=('quantizer',))
 
 @conv_path_only
 def append(x0, x1):
