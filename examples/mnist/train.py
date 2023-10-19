@@ -87,10 +87,11 @@ def apply_model(state, images, labels):
   return grads, loss, accuracy
 
 
-# @jax.jit
+@jax.jit
 def update_gradients(state, grads):
   return state.apply_gradients(grads=grads)
 
+# @jax.jit
 def update_model(state, grads):
   state = update_gradients(state=state, grads=grads)
   return state.update_change_points()
@@ -144,9 +145,9 @@ def create_train_state(rng, config):
   )
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
-  # TODO: pass in quantizer from higher up
+  # TODO: pass in quantizer and epochs_interval from higher up
   return CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
-                                 quantizer=quantizer)
+                                 quantizer=quantizer, epochs_interval=10)
 
 
 def train_and_evaluate(
