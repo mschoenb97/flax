@@ -71,7 +71,7 @@ class CNN(nn.Module):
     return x
 
 
-# @jax.jit
+@jax.jit
 def apply_model(state, images, labels):
   """Computes gradients, loss and accuracy for a single batch."""
 
