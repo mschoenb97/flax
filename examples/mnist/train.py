@@ -87,17 +87,10 @@ def apply_model(state, images, labels):
   return grads, loss, accuracy
 
 
-@jax.jit
-def update_gradients(state, grads):
-  return state.apply_gradients(grads=grads)
+def update_model(state, grads, quantizer):
+  return state.apply_batch_updates(grads=grads, quantizer=quantizer)
 
-# @jax.jit
-def update_model(state, grads):
-  state = update_gradients(state=state, grads=grads)
-  return state.update_change_points()
-
-
-def train_epoch(state, train_ds, batch_size, rng):
+def train_epoch(state, train_ds, batch_size, rng, quantizer):
   """Train for a single epoch."""
   train_ds_size = len(train_ds['image'])
   steps_per_epoch = train_ds_size // batch_size
@@ -113,11 +106,12 @@ def train_epoch(state, train_ds, batch_size, rng):
     batch_images = train_ds['image'][perm, ...]
     batch_labels = train_ds['label'][perm, ...]
     grads, loss, accuracy = apply_model(state, batch_images, batch_labels)
-    state = update_model(state, grads)
+    state = update_model(state, grads, quantizer)
     epoch_loss.append(loss)
     epoch_accuracy.append(accuracy)
   train_loss = np.mean(epoch_loss)
   train_accuracy = np.mean(epoch_accuracy)
+  state = state.apply_epoch_updates()
   return state, train_loss, train_accuracy
 
 
@@ -162,6 +156,8 @@ def train_and_evaluate(
   Returns:
     The train state (which includes the `.params`).
   """
+  quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
+
   train_ds, test_ds = get_datasets(config.test)
   rng = jax.random.key(0)
 
@@ -174,7 +170,7 @@ def train_and_evaluate(
   for epoch in tqdm(range(1, config.num_epochs + 1)):
     rng, input_rng = jax.random.split(rng)
     state, train_loss, train_accuracy = train_epoch(
-        state, train_ds, config.batch_size, input_rng,
+        state, train_ds, config.batch_size, input_rng, quantizer,
     )
     _, test_loss, test_accuracy = apply_model(
         state, test_ds['image'], test_ds['label']
