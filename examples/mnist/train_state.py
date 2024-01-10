@@ -175,7 +175,7 @@ class CustomTrainState(struct.PyTreeNode):
   tx: optax.GradientTransformation = struct.field(pytree_node=False)
   opt_state: optax.OptState = struct.field(pytree_node=True)
   # Quantization fields
-  # quantizer: Callable[[Array], Array]
+  quantizer: struct.dataclass
   epochs_interval: int
   points_changed: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
@@ -199,10 +199,10 @@ class CustomTrainState(struct.PyTreeNode):
 
     return self.replace(epoch=self.epoch + 1)
 
-  def update_change_points(self, quantizer):
+  def update_change_points(self):
     """Call this after gradient updates have been applied"""
 
-    partial_get_quantized = partial(get_quantized, quantizer=quantizer)
+    partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
 
     new_quantized = tree_map_with_path(partial_get_quantized, self.params)
     points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
@@ -255,11 +255,11 @@ class CustomTrainState(struct.PyTreeNode):
         **kwargs,
     )
   
-  def apply_batch_updates(self, *, grads, quantizer, **kwargs):
+  def apply_batch_updates(self, *, grads, **kwargs):
 
     self_with_grads = self.apply_gradients(grads=grads, **kwargs)
     self_with_distance = self_with_grads.update_distance()
-    return self_with_distance.update_change_points(quantizer)
+    return self_with_distance.update_change_points()
 
   @classmethod
   def create(cls, *, apply_fn, params, tx, quantizer, epochs_interval, **kwargs):
@@ -276,6 +276,7 @@ class CustomTrainState(struct.PyTreeNode):
         prev_params=params,
         tx=tx,
         opt_state=opt_state,
+        quantizer=quantizer,
         points_changed=tree_map_with_path(partial_init_points_changed, params),
         last_quantized=tree_map_with_path(partial_get_quantized, params),
         epochs_interval=epochs_interval,

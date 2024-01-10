@@ -87,10 +87,10 @@ def apply_model(state, images, labels):
   return grads, loss, accuracy
 
 
-def update_model(state, grads, quantizer):
-  return state.apply_batch_updates(grads=grads, quantizer=quantizer)
+def update_model(state, grads):
+  return state.apply_batch_updates(grads=grads)
 
-def train_epoch(state, train_ds, batch_size, rng, quantizer):
+def train_epoch(state, train_ds, batch_size, rng):
   """Train for a single epoch."""
   train_ds_size = len(train_ds['image'])
   steps_per_epoch = train_ds_size // batch_size
@@ -106,7 +106,7 @@ def train_epoch(state, train_ds, batch_size, rng, quantizer):
     batch_images = train_ds['image'][perm, ...]
     batch_labels = train_ds['label'][perm, ...]
     grads, loss, accuracy = apply_model(state, batch_images, batch_labels)
-    state = update_model(state, grads, quantizer)
+    state = update_model(state, grads)
     epoch_loss.append(loss)
     epoch_accuracy.append(accuracy)
   train_loss = np.mean(epoch_loss)
@@ -131,9 +131,9 @@ def get_datasets(test):
   return train_ds, test_ds
 
 
-def create_train_state(rng, config):
+def create_train_state(rng, config, quantizer):
   """Creates initial `TrainState`."""
-  quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
+  # quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
   cnn = CNN(quantizer=quantizer,
     kernel_init=dsq_multi_bit_initializer(bits=8, k=1),
   )
@@ -165,12 +165,12 @@ def train_and_evaluate(
   summary_writer.hparams(dict(config))
 
   rng, init_rng = jax.random.split(rng)
-  state = create_train_state(init_rng, config)
+  state = create_train_state(init_rng, config, quantizer)
 
   for epoch in tqdm(range(1, config.num_epochs + 1)):
     rng, input_rng = jax.random.split(rng)
     state, train_loss, train_accuracy = train_epoch(
-        state, train_ds, config.batch_size, input_rng, quantizer,
+        state, train_ds, config.batch_size, input_rng
     )
     _, test_loss, test_accuracy = apply_model(
         state, test_ds['image'], test_ds['label']
