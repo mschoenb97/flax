@@ -1,61 +1,69 @@
-def train_model(*, binary, bits, k, warp_initialize, ):
-  # TODO: link this to flax code
+import ml_collections
+from copy import deepcopy
 
-def train_corresponding_models(*, learning_rate, epochs, optimizer, binary,
-                               k, bits, steps_per_epoch,
-                               warp_initialize=False, simple=True, optimizer_kwargs=None,
-                               lr_kwargs=None, weight_decay=0.0):
+import jax.numpy as jnp
+
+from train import train_and_evaluate
+
+NUM_SAMPLES = 2 * 1280 #update this
+
+def train_model(config):
+
+  res = {}
+  
+  state = train_and_evaluate(config, '/tmp')
+
+
+  res = {
+      'history': state.history,
+      'weights_init': state.initial_weights,
+      'weights_final': state.params,
+      'change_points': jnp.concatenate(state.change_point_list, axis=1),
+      'total_batches': state.step,
+      'stored_weights': state.stored_weights,
+      'distance_traveled': state.distance_traveled,
+      'stored_distances': state.stored_distances,
+      'correct_output_values': state.correct_ouput_values,  # Add the correct output values
+      'model_predictions': state.final_logits  # Add the model's predictions
+  }
+
+  return res
+
+
+
+def train_corresponding_models(*, epochs, optimizer, binary,
+                               k, bits, steps_per_epoch, initial_learning_rate, 
+                               learning_rate_warmup_target, warmup_steps,
+                               decay_steps, warp_initialize):
   """Get histories for both the Standard initializer with the tanh gradient and
   the warped initializer with the STE gradient"""
 
-  seed = 42
+  config = ml_collections.ConfigDict()
+  config.binary = binary
+  config.bits = bits
+  config.k = k
+  config.warp_initialize = warp_initialize
+  config.optimizer_type = optimizer
+  config.initial_learning_rate = initial_learning_rate
+  config.learning_rate_warmup_target = learning_rate_warmup_target
+  config.warmup_steps = warmup_steps
+  config.decay_steps = decay_steps
+  config.num_epochs = epochs
+  config.batch_size = NUM_SAMPLES // steps_per_epoch
 
-  # get quantizers
-  if binary:
-    warp_quantizer = tanh_binary_quantizer(k)
-    straight_quantizer = ste_binary_quantizer()
-  else:
-    warp_quantizer = dsq_multi_bit_quantizer(bits, k)
-    # print('Revert this!')
-    # warp_quantizer = pwl_multi_bit_quantizer(bits, max_val)
-    straight_quantizer = pwl_multi_bit_quantizer(
-        bits, k, adjust_learning_rate=warp_initialize)
+  quantizer_warp_model_config = deepcopy(config)
+  initializer_warp_model_config = deepcopy(config)
 
-  # get initializers
-  if warp_initialize:
-    if binary:
-      warp_initializer = tanh_binary_initializer(seed, k)
-    else:
-      warp_initializer = dsq_multi_bit_initializer(seed, bits, k)
-  else:
-    warp_initializer = ste_initializer(seed)
+  quantizer_warp_model_config.quantizer_type = 'dsq'
+  initializer_warp_model_config.quantizer_type = 'pwl'
 
-  straight_initializer = ste_initializer(seed)
+  quantizer_warp_model_config.initializer_type = 'ste'
+  initializer_warp_model_config.initializer_type = 'dsq'
 
   # get quantizer warp model data
-  quantizer_warp_data = train_model(
-      straight_initializer,
-      warp_quantizer,
-      learning_rate,
-      optimizer, epochs=epochs,
-      straight_initializer=straight_initializer,
-      simple=simple,
-      optimizer_kwargs=optimizer_kwargs,
-      weight_decay=weight_decay,
-      lr_kwargs=lr_kwargs,
-      steps_per_epoch=steps_per_epoch,)
+  quantizer_warp_data = train_model(quantizer_warp_model_config)
   # get initializer warp model data
-  initializer_warp_data = train_model(
-      warp_initializer,
-      straight_quantizer,
-      learning_rate,
-      optimizer, epochs=epochs,
-      straight_initializer=straight_initializer,
-      simple=simple,
-      optimizer_kwargs=optimizer_kwargs,
-      weight_decay=weight_decay,
-      lr_kwargs=lr_kwargs,
-      steps_per_epoch=steps_per_epoch,)
+  initializer_warp_data = train_model(initializer_warp_model_config)
 
   return quantizer_warp_data, initializer_warp_data
 
@@ -576,9 +584,8 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
 def get_default_kwargs(config):
 
   default_kwargs = {
-      'learning_rate': CosineDecay,
       'epochs': config['sgd_epochs'],
-      'optimizer': keras.optimizers.SGD,
+      'optimizer': 'sgd',
       'binary': False,
       'warp_initialize': True,
       'simple': False,
@@ -587,12 +594,10 @@ def get_default_kwargs(config):
       'bits': config['default_bits'],
       'steps_per_epoch': config['steps_per_epoch'],
       'weight_decay': config['weight_decay'],
-      'lr_kwargs': {
-          'initial_learning_rate': 0.0,
-          'warmup_target': config['sgd_lr'],
-          'warmup_steps': config['steps_per_epoch'] * config['warmup_proportion'] * config['sgd_epochs'],
-          'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * config['sgd_epochs']
-      }
+      'initial_learning_rate': 0.0,
+      'warmup_target': config['sgd_lr'],
+      'warmup_steps': config['steps_per_epoch'] * config['warmup_proportion'] * config['sgd_epochs'],
+      'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * config['sgd_epochs']
   }
 
   return default_kwargs
@@ -602,14 +607,12 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
   if optimizer_type == 'sgd':
     lr = config['sgd_lr']
     epochs = config['sgd_epochs']
-    optimizer = keras.optimizers.SGD
-    optimizer_kwargs = {'momentum': 0.9}
+    optimizer = 'sgd'
     warp_initialize = True
   elif optimizer_type == 'adam':
     lr = config['adam_lr']
     epochs = config['adam_epochs']
-    optimizer = keras.optimizers.Adam
-    optimizer_kwargs = {'beta_2': 0.95}
+    optimizer = 'adam'
     warp_initialize = False
   else:
     raise ValueError("Invalid optimizer_type. Must be either 'sgd' or 'adam'.")
@@ -625,16 +628,12 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
     weight_decay *= config['lr_scaledown']
 
   updates = {
-      'learning_rate': CosineDecay,
       'epochs': epochs,
-      'lr_kwargs': {
-          'initial_learning_rate': 0.0,
-          'warmup_target': lr,
-          'warmup_steps': config['steps_per_epoch'] * config['warmup_proportion'] * epochs,
-          'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * epochs
-      },
+      'initial_learning_rate': 0.0,
+      'warmup_target': lr,
+      'warmup_steps': config['steps_per_epoch'] * config['warmup_proportion'] * epochs,
+      'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * epochs,
       'optimizer': optimizer,
-      'optimizer_kwargs': optimizer_kwargs,
       'warp_initialize': warp_initialize,
       'weight_decay': weight_decay,
   }

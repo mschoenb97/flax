@@ -143,7 +143,7 @@ def create_train_state(rng, config):
 
 def train_and_evaluate(
     config: ml_collections.ConfigDict, workdir: str
-) -> train_state.TrainState:
+) -> matts_imports.CustomTrainState:
   """Execute model training and evaluation loop.
 
   Args:
@@ -188,6 +188,10 @@ def train_and_evaluate(
     summary_writer.scalar('train_accuracy', train_accuracy, epoch)
     summary_writer.scalar('test_loss', test_loss, epoch)
     summary_writer.scalar('test_accuracy', test_accuracy, epoch)
+    state.update_history(
+      train_loss, test_loss, train_accuracy, test_accuracy)
+
+  state = state.add_final_logits(test_ds)
 
   summary_writer.flush()
   return state

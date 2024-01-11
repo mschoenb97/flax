@@ -2,7 +2,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import field
 from functools import partial, wraps
-from typing import Any, Callable, List, Literal, Protocol, Union
+from typing import Any, Callable, Optional
 
 import jax
 import jax.numpy as jnp
@@ -25,7 +25,6 @@ DTypeLikeFloat = Any  # TODO: Import or define these to match Numpy's dtype_like
 DTypeLikeComplex = Any
 DTypeLikeInexact = Any  # DTypeLikeFloat | DTypeLikeComplex
 RealNumeric = Any  # Scalar jnp array or float
-
 
 # He uniform logic
 
@@ -167,6 +166,7 @@ def get_initializer_from_config(config):
     
 
 # Optimizers
+
 
 def get_optimizer_from_config(config):
     """
@@ -405,13 +405,16 @@ class CustomTrainState(struct.PyTreeNode):
   points_changed: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   change_point_list: list = field(default_factory=list)
+  history: dict = field(default_factory=dict)
   # quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   # points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   stored_weights: dict = field(default_factory=dict)
   stored_distances: dict = field(default_factory=dict)
-
   distance_traveled: float = 0
   epoch: int = 0
+  final_logits: Optional[Array] = None
+  correct_output_values: Optional[Array] = None
+  initial_weights: Optional[Array] = None
 
 
   def apply_epoch_updates(self):
@@ -423,6 +426,28 @@ class CustomTrainState(struct.PyTreeNode):
       self.stored_distances[new_epoch] = self.distance_traveled
 
     return self.replace(epoch=self.epoch + 1)
+  
+  def update_history(self, train_loss, test_loss, train_accuracy, test_accuracy):
+
+    if len(self.history) == 0:
+      self.history['loss'] = []
+      self.history['accuracy'] = []
+      self.history['val_loss'] = []
+      self.history['val_accuracy'] = []
+
+    self.history['loss'].append(train_loss)
+    self.history['accuracy'].append(train_accuracy)
+    self.history['val_loss'].append(test_loss)
+    self.history['val_accuracy'].append(test_accuracy)
+
+  def add_final_logits(self, test_ds):
+
+    logits = self.apply_fn({'params': self.params}, test_ds['image'])
+
+    return self.replace(
+      final_logits=logits,
+      correct_output_values=test_ds['label'],
+    )
 
   def update_change_points(self):
     """Call this after gradient updates have been applied"""
@@ -483,6 +508,8 @@ class CustomTrainState(struct.PyTreeNode):
   
   def apply_batch_updates(self, *, grads, **kwargs):
 
+    if self.step == 0:
+      self = self.replace(initial_weights=self.params)
     self_with_grads = self.apply_gradients(grads=grads, **kwargs)
     self_with_distance = self_with_grads.update_distance()
     return self_with_distance.update_change_points()
