@@ -37,8 +37,8 @@ from typing import Optional, Callable, Any, Tuple
 from tqdm import tqdm
 
 from initializers import ste_initializer, dsq_multi_bit_initializer
-from quantizers import pwl_multi_bit_quantizer
 from train_state import CustomTrainState
+from quantizers import get_quantizer_from_config
 
 Array = Any
 Shape = Tuple[int, ...]
@@ -131,15 +131,15 @@ def get_datasets(test):
   return train_ds, test_ds
 
 
-def create_train_state(rng, config, quantizer):
+def create_train_state(rng, config):
   """Creates initial `TrainState`."""
-  # quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
+
+  quantizer = get_quantizer_from_config(config)
   cnn = CNN(quantizer=quantizer,
     kernel_init=dsq_multi_bit_initializer(bits=8, k=1),
   )
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
-  # TODO: pass in quantizer and epochs_interval from higher up
   return CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
                                  quantizer=quantizer, epochs_interval=10)
 
@@ -156,7 +156,6 @@ def train_and_evaluate(
   Returns:
     The train state (which includes the `.params`).
   """
-  quantizer = pwl_multi_bit_quantizer(bits=8, k=1, adjust_learning_rate=False)
 
   train_ds, test_ds = get_datasets(config.test)
   rng = jax.random.key(0)
@@ -165,7 +164,7 @@ def train_and_evaluate(
   summary_writer.hparams(dict(config))
 
   rng, init_rng = jax.random.split(rng)
-  state = create_train_state(init_rng, config, quantizer)
+  state = create_train_state(init_rng, config)
 
   for epoch in tqdm(range(1, config.num_epochs + 1)):
     rng, input_rng = jax.random.split(rng)

@@ -86,3 +86,29 @@ class dsq_multi_bit_quantizer:
     quantized = delta * jnp.round((clipped + max_val) / delta) - max_val
 
     return quantized_estimate + lax.stop_gradient(quantized - quantized_estimate)
+  
+
+def get_quantizer_from_config(config):
+  """
+  Factory function to create a quantizer instance based on the provided configuration.
+
+  Args:
+      config: A configuration object or dict containing the quantizer type and its parameters.
+
+  Returns:
+      An instance of either pwl_multi_bit_quantizer or dsq_multi_bit_quantizer.
+  """
+  quantizer_type = config.get('quantizer_type')
+  
+  # Common parameters
+  bits = config.get('bits')
+  k = config.get('k')
+
+  if quantizer_type == 'pwl':
+    adjust_learning_rate = config.get('warp_initilize', False)
+    return pwl_multi_bit_quantizer(bits=bits, k=k, adjust_learning_rate=adjust_learning_rate)
+  elif quantizer_type == 'dsq':
+    return dsq_multi_bit_quantizer(bits=bits, k=k)
+  else:
+    raise ValueError(f"Unknown quantizer type: {quantizer_type}")
+  

@@ -26,6 +26,9 @@ def get_config():
   config.batch_size = 1280
   config.num_epochs = 10
   config.test = True
+  config.quantizer_type = 'pwl'
+  config.bits = 2
+  config.k = 5.5
   return config
 
 
