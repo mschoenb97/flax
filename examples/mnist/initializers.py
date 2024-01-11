@@ -83,3 +83,26 @@ class dsq_multi_bit_initializer:
                 dtype: DTypeLikeInexact = jnp.float_):
 
     return self.remap(self.init_func(key, shape, dtype))
+  
+def get_initializer_from_config(config):
+    """
+    Factory function to create an initializer instance based on the provided configuration.
+
+    Args:
+        config: A configuration object or dict containing the initializer type and its parameters.
+
+    Returns:
+        An instance of either ste_initializer or dsq_multi_bit_initializer.
+    """
+    initializer_type = config.get('initializer_type')
+    
+    if initializer_type == 'ste':
+        return ste_initializer()
+    elif initializer_type == 'dsq':
+        bits = config.get('bits')
+        k = config.get('k')
+        if bits is None or k is None:
+            raise ValueError("Missing required parameters 'bits' and 'k' for dsq initializer.")
+        return dsq_multi_bit_initializer(bits, k)
+    else:
+        raise ValueError(f"Unknown initializer type: {initializer_type}")

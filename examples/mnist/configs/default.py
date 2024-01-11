@@ -27,6 +27,7 @@ def get_config():
   config.num_epochs = 10
   config.test = True
   config.quantizer_type = 'pwl'
+  config.initializer_type = 'dsq'
   config.bits = 2
   config.k = 5.5
   return config

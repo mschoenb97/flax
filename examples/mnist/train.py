@@ -36,7 +36,7 @@ from typing import Optional, Callable, Any, Tuple
 
 from tqdm import tqdm
 
-from initializers import ste_initializer, dsq_multi_bit_initializer
+from initializers import get_initializer_from_config
 from train_state import CustomTrainState
 from quantizers import get_quantizer_from_config
 
@@ -51,7 +51,7 @@ class CNN(nn.Module):
   """A simple CNN model."""
 
   quantizer: Optional[Callable[[Array], Array]] = None
-  kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = ste_initializer()
+  kernel_init: Optional[Callable[[PRNGKey, Shape, Dtype], Array]] = None
 
 
   @nn.compact
@@ -135,9 +135,8 @@ def create_train_state(rng, config):
   """Creates initial `TrainState`."""
 
   quantizer = get_quantizer_from_config(config)
-  cnn = CNN(quantizer=quantizer,
-    kernel_init=dsq_multi_bit_initializer(bits=8, k=1),
-  )
+  initializer = get_initializer_from_config(config)
+  cnn = CNN(quantizer=quantizer, kernel_init=initializer)
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   tx = optax.sgd(config.learning_rate, config.momentum)
   return CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
