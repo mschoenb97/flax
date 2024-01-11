@@ -181,7 +181,7 @@ def get_optimizer_from_config(config):
     optimizer_type = config.get('optimizer_type')
     momentum = config.get('momentum', 0.9)  # Default momentum
     initial_lr = config.get('initial_learning_rate', 0.001)  # Default learning rate
-    lr_warmup_target = config.get('learning_rate_warmup_target', initial_lr)
+    lr_warmup_target = config.get('warmup_target', initial_lr)
     warmup_steps = config.get('warmup_steps', 0)
     decay_steps = config.get('decay_steps', 1000)
 
@@ -356,6 +356,10 @@ def init_change_points(weights, *, quantizer):
   points_changed = jnp.ones_like(weights)
   return _get_change_point_data(points_changed, qweights, 0)
 
+@conv_path_only()
+def conv_only(x):
+
+  return x
 
 @conv_path_only()
 def init_points_changed(weights):
@@ -377,16 +381,17 @@ _get_quantized = jax.jit(
 
 get_quantized = conv_path_only(jit_compile=False)(_get_quantized)
 
-@conv_path_only()
-def append(x0, x1):
-  return jnp.concatenate((x0, x1), axis=0)
-
 @conv_path_only(default_return=0.0)
 def get_total_distance_leaf(prev_params, curr_params):
 
   max_val = get_he_uniform_max_val(prev_params.shape)
 
   return jnp.sum(jnp.abs(prev_params-curr_params) / max_val)
+
+@conv_path_only()
+def conv_append(array0, array1):
+
+  return jnp.append(array0, array1)
 
 
 class CustomTrainState(struct.PyTreeNode):
@@ -402,9 +407,8 @@ class CustomTrainState(struct.PyTreeNode):
   # Quantization fields
   quantizer: struct.dataclass
   epochs_interval: int
-  points_changed: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
-  change_point_list: list = field(default_factory=list)
+  change_points: Optional[core.FrozenDict[str, Any]] = None
   history: dict = field(default_factory=dict)
   # quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   # points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
@@ -421,7 +425,7 @@ class CustomTrainState(struct.PyTreeNode):
 
     new_epoch = self.epoch + 1
     if (new_epoch) % self.epochs_interval == 0:
-      self.stored_weights[new_epoch] = self.params
+      self.stored_weights[new_epoch] = tree_map_with_path(conv_only, self.params)
       # Store the current distance_traveled
       self.stored_distances[new_epoch] = self.distance_traveled
 
@@ -460,10 +464,14 @@ class CustomTrainState(struct.PyTreeNode):
     change_points = tree_map_with_path(
       partial_get_change_points, points_changed, new_quantized)
     
-    self.change_point_list.append(change_points)
+    if self.step == 1:
+      new_change_points = change_points
+    else:
+      new_change_points = tree_map_with_path(conv_append, self.change_points, change_points)
 
     return self.replace(
       last_quantized=new_quantized,
+      change_points=new_change_points,
     )
 
   def get_distance_traveled(self):
@@ -509,7 +517,7 @@ class CustomTrainState(struct.PyTreeNode):
   def apply_batch_updates(self, *, grads, **kwargs):
 
     if self.step == 0:
-      self = self.replace(initial_weights=self.params)
+      self = self.replace(initial_weights=tree_map_with_path(conv_only, self.params))
     self_with_grads = self.apply_gradients(grads=grads, **kwargs)
     self_with_distance = self_with_grads.update_distance()
     return self_with_distance.update_change_points()
@@ -519,7 +527,6 @@ class CustomTrainState(struct.PyTreeNode):
     """Creates a new instance with `step=0` and initialized `opt_state`."""
     opt_state = tx.init(params)
 
-    partial_init_points_changed = partial(init_points_changed)
     partial_get_quantized = partial(get_quantized, quantizer=quantizer)
     
     return cls(
@@ -530,7 +537,6 @@ class CustomTrainState(struct.PyTreeNode):
         tx=tx,
         opt_state=opt_state,
         quantizer=quantizer,
-        points_changed=tree_map_with_path(partial_init_points_changed, params),
         last_quantized=tree_map_with_path(partial_get_quantized, params),
         epochs_interval=epochs_interval,
         **kwargs,

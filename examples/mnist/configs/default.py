@@ -32,7 +32,7 @@ def get_config():
   config.optimizer_type = 'sgd'
   config.momentum = 0.9
   config.initial_learning_rate = 0.0
-  config.learning_rate_warmup_target = 0.1
+  config.warmup_target = 0.1
   config.warmup_steps = 0.0
   config.decay_steps = 1000
   return config

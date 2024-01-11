@@ -1,9 +1,29 @@
 import ml_collections
 from copy import deepcopy
+from tqdm import tqdm
+import os
+import sys
+import pickle
+import random
+from tensorflow import keras
+from copy import deepcopy
+import tensorflow.compat.v2 as tf
+import math
+import pandas as pd
+from matplotlib import pyplot as plt
+from pprint import pprint
+import json
+from scipy.stats import pearsonr
+import numpy as np
+import tensorflow as tf
+import argparse
+import importlib.util
+from jax import tree_util
 
 import jax.numpy as jnp
 
 from train import train_and_evaluate
+import matts_imports
 
 NUM_SAMPLES = 2 * 1280 #update this
 
@@ -13,17 +33,23 @@ def train_model(config):
   
   state = train_and_evaluate(config, '/tmp')
 
+  cleaned_change_points = {}
+
+  for i, leaf in enumerate(tree_util.tree_leaves(state.change_points)):
+    if leaf is not None:
+      cleaned_change_points[i] = leaf
+
 
   res = {
       'history': state.history,
       'weights_init': state.initial_weights,
-      'weights_final': state.params,
-      'change_points': jnp.concatenate(state.change_point_list, axis=1),
+      'weights_final': tree_util.tree_map_with_path(matts_imports.conv_only, state.params),
+      'change_points': cleaned_change_points,
       'total_batches': state.step,
       'stored_weights': state.stored_weights,
       'distance_traveled': state.distance_traveled,
       'stored_distances': state.stored_distances,
-      'correct_output_values': state.correct_ouput_values,  # Add the correct output values
+      'correct_output_values': state.correct_output_values,  # Add the correct output values
       'model_predictions': state.final_logits  # Add the model's predictions
   }
 
@@ -33,7 +59,7 @@ def train_model(config):
 
 def train_corresponding_models(*, epochs, optimizer, binary,
                                k, bits, steps_per_epoch, initial_learning_rate, 
-                               learning_rate_warmup_target, warmup_steps,
+                               warmup_target, warmup_steps,
                                decay_steps, warp_initialize):
   """Get histories for both the Standard initializer with the tanh gradient and
   the warped initializer with the STE gradient"""
@@ -45,11 +71,12 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.warp_initialize = warp_initialize
   config.optimizer_type = optimizer
   config.initial_learning_rate = initial_learning_rate
-  config.learning_rate_warmup_target = learning_rate_warmup_target
+  config.warmup_target = warmup_target
   config.warmup_steps = warmup_steps
   config.decay_steps = decay_steps
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
+  config.test = True # TODO: delete this
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
@@ -124,6 +151,7 @@ def organize_change_point_data(change_points):
     coordinate_cols = [f'c{i}' for i in range(length - 2)]
     columns = coordinate_cols + ['qvalue', 'step_count']
 
+    import pdb; pdb.set_trace()
     aggregated = pd.DataFrame(aggregated.numpy(), columns=columns)
 
     organized_change_points[i] = aggregated
@@ -427,27 +455,17 @@ def compute_distance_metric(
 
 def get_initializer(identifier_kwargs):
 
-  seed = 42
+  config = deepcopy(identifier_kwargs)
 
-  if identifier_kwargs['warp_initialize']:
-    if identifier_kwargs['binary']:
-      warp_initializer = tanh_binary_initializer(seed, identifier_kwargs['k'])
-    else:
-      warp_initializer = dsq_multi_bit_initializer(
-          seed, identifier_kwargs['bits'], identifier_kwargs['k'])
-  else:
-    warp_initializer = ste_initializer(seed)
+  config['initializer_type'] = 'dsq' if config['warp_initialize'] else 'ste'
 
-  return warp_initializer
+  return matts_imports.get_initializer_from_config(config)
 
 def _get_quantizer(identifier_kwargs):
 
-  if identifier_kwargs['binary']:
-    quantizer = tanh_binary_quantizer(identifier_kwargs['k'])
-  else:
-    quantizer = dsq_multi_bit_quantizer(
-      identifier_kwargs['bits'], identifier_kwargs['k'])
-  return quantizer
+  config = deepcopy(identifier_kwargs)
+  config['quantizer_type'] = 'dsq'
+  return matts_imports.get_quantizer_from_config(config)
 
 
 def get_distance_metric(quantizer_warp_data, initializer_warp_data, identifier_kwargs):
@@ -465,15 +483,15 @@ def get_distance_metric(quantizer_warp_data, initializer_warp_data, identifier_k
   return {'distance_metric': distances, 'quantized_agreements': quantized_agreements}
 
 
-def get_flattened_latent_weights(weights, decapitate=True, initializer=None):
+def get_flattened_latent_weights(weights, initializer=None):
 
   weight_ls = []
-  for i, weight in enumerate(weights):
-    if i < len(weights) - 2 or (not decapitate):
+  for i, weight in enumerate(tree_util.tree_leaves(weights)):
+    if weight is not None:
       if initializer is not None:
         _ = initializer(weight.shape)
         weight = initializer.remap(weight)
-      weight = weight / get_he_uniform_max_val(weight.shape)
+      weight = weight / matts_imports.get_he_uniform_max_val(weight.shape)
       weight_ls.append(np.array(weight).flatten())
 
   return np.concatenate(weight_ls)
@@ -588,12 +606,10 @@ def get_default_kwargs(config):
       'optimizer': 'sgd',
       'binary': False,
       'warp_initialize': True,
-      'simple': False,
-      'optimizer_kwargs': {'momentum': 0.9},
       'k': config['bit_to_k_map'][config['default_bits']],
       'bits': config['default_bits'],
       'steps_per_epoch': config['steps_per_epoch'],
-      'weight_decay': config['weight_decay'],
+      # 'weight_decay': config['weight_decay'],
       'initial_learning_rate': 0.0,
       'warmup_target': config['sgd_lr'],
       'warmup_steps': config['steps_per_epoch'] * config['warmup_proportion'] * config['sgd_epochs'],
@@ -617,7 +633,7 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
   else:
     raise ValueError("Invalid optimizer_type. Must be either 'sgd' or 'adam'.")
 
-  weight_decay = config['weight_decay']
+  # weight_decay = config['weight_decay']
 
   if jitter:
     lr = lr * (1.0 + config['lr_jitter_scale'])
@@ -625,7 +641,7 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
   if scaledown:
     lr = lr * config['lr_scaledown']
     epochs *= config['epoch_scale_up_for_lr_scale_down']
-    weight_decay *= config['lr_scaledown']
+    # weight_decay *= config['lr_scaledown']
 
   updates = {
       'epochs': epochs,
@@ -635,7 +651,7 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
       'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * epochs,
       'optimizer': optimizer,
       'warp_initialize': warp_initialize,
-      'weight_decay': weight_decay,
+      # 'weight_decay': weight_decay,
   }
 
   default_kwargs = get_default_kwargs(config)
