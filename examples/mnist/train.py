@@ -36,8 +36,8 @@ from typing import Optional, Callable, Any, Tuple
 
 from tqdm import tqdm
 
-from matts_imports import get_initializer_from_config, CustomTrainState, get_quantizer_from_config
-
+import matts_imports
+ 
 Array = Any
 Shape = Tuple[int, ...]
 Dtype = Any  # this could be a real type?
@@ -132,12 +132,12 @@ def get_datasets(test):
 def create_train_state(rng, config):
   """Creates initial `TrainState`."""
 
-  quantizer = get_quantizer_from_config(config)
-  initializer = get_initializer_from_config(config)
+  quantizer = matts_imports.get_quantizer_from_config(config)
+  initializer = matts_imports.get_initializer_from_config(config)
+  tx = matts_imports.get_optimizer_from_config(config)
   cnn = CNN(quantizer=quantizer, kernel_init=initializer)
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
-  tx = optax.sgd(config.learning_rate, config.momentum)
-  return CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
+  return matts_imports.CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
                                  quantizer=quantizer, epochs_interval=10)
 
 

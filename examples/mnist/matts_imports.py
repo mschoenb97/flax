@@ -164,6 +164,44 @@ def get_initializer_from_config(config):
         return dsq_multi_bit_initializer(bits, k)
     else:
         raise ValueError(f"Unknown initializer type: {initializer_type}")
+    
+
+# Optimizers
+
+def get_optimizer_from_config(config):
+    """
+    Creates an optax optimizer based on the given configuration.
+
+    Args:
+        config (dict): Configuration parameters for the optimizer.
+
+    Returns:
+        An optax optimizer.
+    """
+    optimizer_type = config.get('optimizer_type')
+    momentum = config.get('momentum', 0.9)  # Default momentum
+    initial_lr = config.get('initial_learning_rate', 0.001)  # Default learning rate
+    lr_warmup_target = config.get('learning_rate_warmup_target', initial_lr)
+    warmup_steps = config.get('warmup_steps', 0)
+    decay_steps = config.get('decay_steps', 1000)
+
+    # Learning rate schedule
+    lr_schedule = optax.join_schedules(
+        schedules=[
+            optax.linear_schedule(init_value=0.0, end_value=lr_warmup_target, transition_steps=warmup_steps),
+            optax.cosine_decay_schedule(init_value=lr_warmup_target, decay_steps=decay_steps)
+        ],
+        boundaries=[warmup_steps]
+    )
+
+    # Selecting the optimizer
+    if optimizer_type == 'sgd':
+        return optax.chain(optax.trace(decay=momentum, nesterov=False), optax.scale_by_schedule(lr_schedule))
+    elif optimizer_type == 'adam':
+        return optax.chain(optax.adam(learning_rate=lr_schedule, b2=0.95))
+    else:
+        raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
+
 
 # Quantizers
 

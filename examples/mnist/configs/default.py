@@ -21,7 +21,6 @@ def get_config():
   """Get the default hyperparameter configuration."""
   config = ml_collections.ConfigDict()
 
-  config.learning_rate = 0.1
   config.momentum = 0.9
   config.batch_size = 1280
   config.num_epochs = 10
@@ -30,6 +29,12 @@ def get_config():
   config.initializer_type = 'dsq'
   config.bits = 2
   config.k = 5.5
+  config.optimizer_type = 'sgd'
+  config.momentum = 0.9
+  config.initial_learning_rate = 0.0
+  config.learning_rate_warmup_target = 0.1
+  config.warmup_steps = 0.0
+  config.decay_steps = 1000
   return config
 
 
