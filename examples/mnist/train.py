@@ -36,9 +36,7 @@ from typing import Optional, Callable, Any, Tuple
 
 from tqdm import tqdm
 
-from initializers import get_initializer_from_config
-from train_state import CustomTrainState
-from quantizers import get_quantizer_from_config
+from matts_imports import get_initializer_from_config, CustomTrainState, get_quantizer_from_config
 
 Array = Any
 Shape = Tuple[int, ...]
