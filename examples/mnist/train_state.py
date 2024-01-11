@@ -30,12 +30,12 @@ def conv_path_only(jit_compile=True, default_return=None):
 
 Array = Any
 
-def _get_change_point_data(points_changed_tensor, qweights, *, total_batches):
+def _get_change_point_data(points_changed_tensor, qweights, step):
   assert points_changed_tensor.shape == qweights.shape
   coords = jnp.argwhere(points_changed_tensor)
   coords_float = jnp.array(coords, dtype=jnp.float32)
   quantized_values = qweights[jnp.where(points_changed_tensor)]
-  batch_tensor = jnp.full((coords.shape[0],), total_batches)
+  batch_tensor = jnp.full((coords.shape[0],), step)
   batch_tensor_float = jnp.array(batch_tensor, dtype=jnp.float32)
 
   concat_input = [
@@ -47,12 +47,14 @@ def _get_change_point_data(points_changed_tensor, qweights, *, total_batches):
   result_tensor = jnp.concatenate(concat_input, axis=1)
   return result_tensor
 
+get_change_point_data = conv_path_only(jit_compile=False)(_get_change_point_data)
+
 @conv_path_only()
 def init_change_points(weights, *, quantizer):
   """Set up initial change point data stractures. use `tree_map_with_path`"""
   qweights = quantizer(weights)
   points_changed = jnp.ones_like(weights)
-  return _get_change_point_data(points_changed, qweights, total_batches=0)
+  return _get_change_point_data(points_changed, qweights, 0)
 
 
 @conv_path_only()
@@ -87,83 +89,6 @@ def get_total_distance_leaf(prev_params, curr_params):
   return jnp.sum(jnp.abs(prev_params-curr_params) / max_val)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class StoreWeightsCallback(Callback):
-#   """Tracks weights and weight distances. Ignores the last two layers, as they are unquantized"""
-
-#   def __init__(self, epochs_interval):
-#     super().__init__()
-#     self.epochs_interval = epochs_interval
-#     self.stored_weights = {}
-#     self.stored_distances = {}  # To store the distance traveled at each epoch
-#     self.distance_traveled = 0.0  # Initialize distance_traveled attribute as a scalar
-#     self.prev_weights = None  # To store the previous weights for distance calculation
-
-#   def on_train_begin(self, logs=None):
-#     # Initialize distance_traveled as 0.0 at the beginning of training
-#     self.distance_traveled = 0.0
-
-#   def on_epoch_end(self, epoch, logs=None):
-#     if (epoch + 1) % self.epochs_interval == 0:
-#       self.stored_weights[epoch + 1] = self.model.get_weights()[:-2]
-#       # Store the current distance_traveled
-#       self.stored_distances[epoch + 1] = self.distance_traveled
-
-#   def on_batch_end(self, batch, logs=None):
-#     # Get the current weights
-#     current_weights = self.model.get_weights()
-#     # If prev_weights is None, initialize it with the current weights
-#     if self.prev_weights is None:
-#       self.prev_weights = current_weights
-#     # Calculate the sum of absolute differences for all weights and update distance_traveled
-#     for curr_w, prev_w in zip(current_weights[:-2], self.prev_weights[:-2]):
-#       max_val = get_he_uniform_max_val(curr_w.shape)
-#       self.distance_traveled += tf.reduce_sum(
-#           tf.math.abs(curr_w - prev_w) / max_val)
-#     # Update prev_weights with current_weights for the next batch
-#     self.prev_weights = current_weights
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class CustomTrainState(struct.PyTreeNode):
   """Forked from flax/training/train_state.py"""
 
@@ -179,13 +104,13 @@ class CustomTrainState(struct.PyTreeNode):
   epochs_interval: int
   points_changed: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
-  quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
-  points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
+  change_point_list: list = field(default_factory=list)
+  # quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
+  # points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   stored_weights: dict = field(default_factory=dict)
   stored_distances: dict = field(default_factory=dict)
 
   distance_traveled: float = 0
-  total_batches: int = 0
   epoch: int = 0
 
 
@@ -203,16 +128,17 @@ class CustomTrainState(struct.PyTreeNode):
     """Call this after gradient updates have been applied"""
 
     partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
+    partial_get_change_points = partial(get_change_point_data, step=self.step)
 
     new_quantized = tree_map_with_path(partial_get_quantized, self.params)
     points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
-
-    self.quantized_vals_list.append(new_quantized)
-    self.points_changed_list.append(points_changed)
+    change_points = tree_map_with_path(
+      partial_get_change_points, points_changed, new_quantized)
+    
+    self.change_point_list.append(change_points)
 
     return self.replace(
       last_quantized=new_quantized,
-      total_batches=self.total_batches + 1,
     )
 
   def get_distance_traveled(self):
