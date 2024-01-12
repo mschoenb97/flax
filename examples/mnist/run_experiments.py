@@ -80,8 +80,6 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.decay_steps = decay_steps
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
-  # config.test = True # TODO: delete this
-  config.test = False # TODO: delete this
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
@@ -149,7 +147,6 @@ def organize_change_point_data(change_points):
   for i, change_point_data in (change_points.items()):
     organized_change_points[i] = {}
 
-    # aggregated = tf.concat(change_point_data, axis=0)
     aggregated = change_point_data
     shape = aggregated.shape
     length = shape[-1]

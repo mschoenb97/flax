@@ -37,19 +37,13 @@ from typing import Optional, Callable, Any, Tuple
 from tqdm import tqdm
 
 import matts_imports
- 
-Array = Any
-Shape = Tuple[int, ...]
-Dtype = Any  # this could be a real type?
-
-
 
 
 class CNN(nn.Module):
   """A simple CNN model."""
 
-  quantizer: Optional[Callable[[Array], Array]] = None
-  kernel_init: Optional[Callable[[PRNGKey, Shape, Dtype], Array]] = None
+  quantizer: Optional[Callable[[Any], Any]] = None
+  kernel_init: Optional[Callable[[PRNGKey, Tuple[int, ...], Any], Any]] = None
 
 
   @nn.compact
@@ -113,7 +107,7 @@ def train_epoch(state, train_ds, batch_size, rng):
   return state, train_loss, train_accuracy
 
 
-def get_datasets(test):
+def get_datasets():
   """Load MNIST train and test datasets into memory."""
   ds_builder = tfds.builder('mnist')
   ds_builder.download_and_prepare()
@@ -122,10 +116,6 @@ def get_datasets(test):
   train_ds['image'] = jnp.float32(train_ds['image']) / 255.0
   test_ds['image'] = jnp.float32(test_ds['image']) / 255.0
 
-  if test:
-    for key in train_ds.keys():
-      train_ds[key] = train_ds[key][:len(train_ds[key]) // 20]
-      test_ds[key] = test_ds[key][:len(test_ds[key]) // 20]
   return train_ds, test_ds
 
 
@@ -154,7 +144,7 @@ def train_and_evaluate(
     The train state (which includes the `.params`).
   """
 
-  train_ds, test_ds = get_datasets(config.test)
+  train_ds, test_ds = get_datasets()
   rng = jax.random.key(0)
 
   summary_writer = tensorboard.SummaryWriter(workdir)
