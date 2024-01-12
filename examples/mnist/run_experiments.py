@@ -19,6 +19,7 @@ import tensorflow as tf
 import argparse
 import importlib.util
 from jax import tree_util
+from jaxlib.xla_extension import ArrayImpl
 
 import jax.numpy as jnp
 
@@ -38,7 +39,6 @@ def train_model(config):
   for i, leaf in enumerate(tree_util.tree_leaves(state.change_points)):
     if leaf is not None:
       cleaned_change_points[i] = leaf
-
 
   res = {
       'history': state.history,
@@ -144,15 +144,15 @@ def organize_change_point_data(change_points):
   for i, change_point_data in (change_points.items()):
     organized_change_points[i] = {}
 
-    aggregated = tf.concat(change_point_data, axis=0)
+    # aggregated = tf.concat(change_point_data, axis=0)
+    aggregated = change_point_data
     shape = aggregated.shape
     length = shape[-1]
 
     coordinate_cols = [f'c{i}' for i in range(length - 2)]
     columns = coordinate_cols + ['qvalue', 'step_count']
 
-    import pdb; pdb.set_trace()
-    aggregated = pd.DataFrame(aggregated.numpy(), columns=columns)
+    aggregated = pd.DataFrame(aggregated, columns=columns)
 
     organized_change_points[i] = aggregated
 
@@ -489,7 +489,6 @@ def get_flattened_latent_weights(weights, initializer=None):
   for i, weight in enumerate(tree_util.tree_leaves(weights)):
     if weight is not None:
       if initializer is not None:
-        _ = initializer(weight.shape)
         weight = initializer.remap(weight)
       weight = weight / matts_imports.get_he_uniform_max_val(weight.shape)
       weight_ls.append(np.array(weight).flatten())
@@ -688,6 +687,27 @@ def run_models_from_kwargs(kwargs, config):
   return quantizer_warp_data, initializer_warp_data
 
 
+def jax_to_numpy(obj):
+    """
+    Recursively convert jaxlib.xla_extension.ArrayImpl objects to numpy arrays in a JSON-like object.
+    """
+    if isinstance(obj, ArrayImpl) and obj.shape == ():
+        # Direct conversion of JAX array to NumPy array
+        return float(obj)
+    elif isinstance(obj, dict):
+        # Recursively apply to dictionary values
+        return {k: jax_to_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        # Recursively apply to list elements
+        return [jax_to_numpy(v) for v in obj]
+    elif isinstance(obj, tuple):
+        # Recursively apply to tuple elements
+        return tuple(jax_to_numpy(v) for v in obj)
+    else:
+        # Return the object as is if it's not a type that needs conversion
+        return obj
+
+
 def run_full_analysis(config):
 
   if not os.path.exists(config['path']):
@@ -764,6 +784,7 @@ def run_full_analysis(config):
     res[f"{bits}_bits"] = bits_results
 
   res = convert_all_float32_to_float(res)
+  res = jax_to_numpy(res)
 
   with open(os.path.join(config['path'], 'results.json'), 'w') as f:
     json.dump(res, f)

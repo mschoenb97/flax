@@ -362,6 +362,11 @@ def conv_only(x):
   return x
 
 @conv_path_only()
+def empty_list(x):
+
+  return []
+
+@conv_path_only()
 def init_points_changed(weights):
   """Set up initial change point data stractures. use `tree_map_with_path`"""
   points_changed = jnp.ones_like(weights)
@@ -391,7 +396,12 @@ def get_total_distance_leaf(prev_params, curr_params):
 @conv_path_only()
 def conv_append(array0, array1):
 
-  return jnp.append(array0, array1)
+  return jnp.concatenate((array0, array1), axis=0)
+
+@conv_path_only()
+def conv_ones(x):
+
+  return jnp.ones_like(x)
 
 
 class CustomTrainState(struct.PyTreeNode):
@@ -408,7 +418,7 @@ class CustomTrainState(struct.PyTreeNode):
   quantizer: struct.dataclass
   epochs_interval: int
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
-  change_points: Optional[core.FrozenDict[str, Any]] = None
+  change_points: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   history: dict = field(default_factory=dict)
   # quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   # points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
@@ -463,11 +473,11 @@ class CustomTrainState(struct.PyTreeNode):
     points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
     change_points = tree_map_with_path(
       partial_get_change_points, points_changed, new_quantized)
-    
-    if self.step == 1:
-      new_change_points = change_points
-    else:
-      new_change_points = tree_map_with_path(conv_append, self.change_points, change_points)
+  
+    new_change_points = tree_map_with_path(conv_append, self.change_points, change_points)
+
+    # if new_change_points['Conv_0']['bias'].size > 0:
+      # import pdb; pdb.set_trace()
 
     return self.replace(
       last_quantized=new_quantized,
@@ -528,7 +538,10 @@ class CustomTrainState(struct.PyTreeNode):
     opt_state = tx.init(params)
 
     partial_get_quantized = partial(get_quantized, quantizer=quantizer)
-    
+    partial_get_change_points = partial(get_change_point_data, step=0)
+    ones = tree_map_with_path(conv_ones, params)
+    quantized_params = tree_map_with_path(partial_get_quantized, params)
+
     return cls(
         step=0,
         apply_fn=apply_fn,
@@ -537,7 +550,8 @@ class CustomTrainState(struct.PyTreeNode):
         tx=tx,
         opt_state=opt_state,
         quantizer=quantizer,
-        last_quantized=tree_map_with_path(partial_get_quantized, params),
+        last_quantized=quantized_params,
+        change_points=tree_map_with_path(partial_get_change_points, ones, quantized_params),
         epochs_interval=epochs_interval,
         **kwargs,
     )
