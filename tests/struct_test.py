@@ -14,17 +14,14 @@
 
 """Tests for flax.struct."""
 
-from typing import Any
-import unittest
-
-from absl.testing import absltest
-
 import dataclasses
-
-from flax import struct
+from typing import Any
 
 import jax
+from absl.testing import absltest
 from jax._src.tree_util import prefix_errors
+
+from flax import struct
 
 # Parse absl flags test_srcdir and test_tmpdir.
 jax.config.parse_flags_with_absl()
@@ -38,7 +35,6 @@ class Point:
 
 
 class StructTest(absltest.TestCase):
-
   def test_no_extra_fields(self):
     p = Point(x=1, y=2, meta={})
     with self.assertRaises(dataclasses.FrozenInstanceError):

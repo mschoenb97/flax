@@ -23,9 +23,9 @@ Note that with `FLIP #1009`_ learning rate schedules in ``flax.training`` are
 .. _Optimizer Schedules: https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules
 """
 
-from absl import logging
 import jax.numpy as jnp
 import numpy as np
+from absl import logging
 
 
 def _piecewise_constant(boundaries, values, t):
@@ -34,7 +34,7 @@ def _piecewise_constant(boundaries, values, t):
 
 
 def create_constant_learning_rate_schedule(
-    base_learning_rate, steps_per_epoch, warmup_length=0.0
+  base_learning_rate, steps_per_epoch, warmup_length=0.0
 ):
   """Create a constant learning rate schedule with optional warmup.
 
@@ -55,16 +55,16 @@ def create_constant_learning_rate_schedule(
     steps_per_epoch: the number of iterations per epoch
     warmup_length: if > 0, the learning rate will be modulated by a warmup
       factor that will linearly ramp-up from 0 to 1 over the first
-      `warmup_length` epochs
+      ``warmup_length`` epochs
 
   Returns:
-    Function `f(step) -> lr` that computes the learning rate for a given step.
+    Function ``f(step) -> lr`` that computes the learning rate for a given step.
   """
   logging.warning(
-      'Learning rate schedules in ``flax.training`` are effectively deprecated '
-      'in favor of Optax schedules. Please refer to '
-      'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
-      ' for alternatives.'
+    'Learning rate schedules in ``flax.training`` are effectively deprecated '
+    'in favor of Optax schedules. Please refer to '
+    'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
+    ' for alternatives.'
   )
 
   def learning_rate_fn(step):
@@ -77,7 +77,7 @@ def create_constant_learning_rate_schedule(
 
 
 def create_stepped_learning_rate_schedule(
-    base_learning_rate, steps_per_epoch, lr_sched_steps, warmup_length=0.0
+  base_learning_rate, steps_per_epoch, lr_sched_steps, warmup_length=0.0
 ):
   """Create a stepped learning rate schedule with optional warmup.
 
@@ -91,7 +91,7 @@ def create_stepped_learning_rate_schedule(
 
   A stepped learning rate schedule decreases the learning rate
   by specified amounts at specified epochs. The steps are given as
-  the `lr_sched_steps` parameter. A common ImageNet schedule decays the
+  the ``lr_sched_steps`` parameter. A common ImageNet schedule decays the
   learning rate by a factor of 0.1 at epochs 30, 60 and 80. This would be
   specified as::
 
@@ -109,20 +109,20 @@ def create_stepped_learning_rate_schedule(
     base_learning_rate: the base learning rate
     steps_per_epoch: the number of iterations per epoch
     lr_sched_steps: the schedule as a list of steps, each of which is
-      a `[epoch, lr_factor]` pair; the step occurs at epoch `epoch` and
-      sets the learning rate to `base_learning_rage * lr_factor`
+      a ``[epoch, lr_factor]`` pair; the step occurs at epoch ``epoch`` and
+      sets the learning rate to ``base_learning_rage * lr_factor``
     warmup_length: if > 0, the learning rate will be modulated by a warmup
       factor that will linearly ramp-up from 0 to 1 over the first
-      `warmup_length` epochs
+      ``warmup_length`` epochs
 
   Returns:
-    Function `f(step) -> lr` that computes the learning rate for a given step.
+    Function ``f(step) -> lr`` that computes the learning rate for a given step.
   """
   logging.warning(
-      'Learning rate schedules in ``flax.training`` are effectively deprecated '
-      'in favor of Optax schedules. Please refer to '
-      'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
-      ' for alternatives.'
+    'Learning rate schedules in ``flax.training`` are effectively deprecated '
+    'in favor of Optax schedules. Please refer to '
+    'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
+    ' for alternatives.'
   )
   boundaries = [step[0] for step in lr_sched_steps]
   decays = [step[1] for step in lr_sched_steps]
@@ -140,7 +140,7 @@ def create_stepped_learning_rate_schedule(
 
 
 def create_cosine_learning_rate_schedule(
-    base_learning_rate, steps_per_epoch, halfcos_epochs, warmup_length=0.0
+  base_learning_rate, steps_per_epoch, halfcos_epochs, warmup_length=0.0
 ):
   """Create a cosine learning rate schedule with optional warmup.
 
@@ -166,16 +166,16 @@ def create_cosine_learning_rate_schedule(
       normally the number of epochs used for training
     warmup_length: if > 0, the learning rate will be modulated by a warmup
       factor that will linearly ramp-up from 0 to 1 over the first
-      `warmup_length` epochs
+      ``warmup_length`` epochs
 
   Returns:
-    Function `f(step) -> lr` that computes the learning rate for a given step.
+    Function ``f(step) -> lr`` that computes the learning rate for a given step.
   """
   logging.warning(
-      'Learning rate schedules in ``flax.training`` are effectively deprecated '
-      'in favor of Optax schedules. Please refer to '
-      'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
-      ' for alternatives.'
+    'Learning rate schedules in ``flax.training`` are effectively deprecated '
+    'in favor of Optax schedules. Please refer to '
+    'https://optax.readthedocs.io/en/latest/api.html#optimizer-schedules'
+    ' for alternatives.'
   )
   halfwavelength_steps = halfcos_epochs * steps_per_epoch
 

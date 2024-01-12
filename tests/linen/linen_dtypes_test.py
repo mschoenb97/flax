@@ -14,22 +14,17 @@
 
 """Tests for flax.linen.dtypes."""
 
-import functools
-from multiprocessing.sharedctypes import Value
-
-from absl.testing import absltest
-
-from flax import linen as nn
-from flax.linen import dtypes
 
 import jax
+from absl.testing import absltest
 from jax import numpy as jnp
+
+from flax.linen import dtypes
 
 default_float_dtype = jnp.result_type(1.0)
 
 
 class DtypesTest(absltest.TestCase):
-
   def test_no_inexact_dtype(self):
     i32 = jnp.int32(1.0)
     self.assertEqual(dtypes.canonicalize_dtype(i32, inexact=False), jnp.int32)

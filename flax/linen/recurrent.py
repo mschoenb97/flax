@@ -18,28 +18,33 @@ THe RNNCell modules can be scanned using lifted transforms. For more information
 see: https://flax.readthedocs.io/en/latest/developer_notes/lift.html.
 """
 
-from abc import ABCMeta
 from functools import partial  # pylint: disable=g-importing-member
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, TypeVar, Union, cast
-from absl import logging
-from flax.core import lift
-from flax.core.frozen_dict import FrozenDict
-from flax.linen import initializers
-from flax.linen import transforms
-from flax.linen.activation import sigmoid
-from flax.linen.activation import tanh
-from flax.linen.dtypes import promote_dtype
-from flax.linen.linear import Conv
-from flax.linen.linear import default_kernel_init
-from flax.linen.linear import Dense
-from flax.linen.linear import PrecisionLike
-from flax.linen.module import compact, nowrap
-from flax.linen.module import Module
+from typing import (
+  Any,
+  Callable,
+  Dict,
+  Mapping,
+  Optional,
+  Sequence,
+  Tuple,
+  TypeVar,
+  Union,
+)
+
 import jax
+import numpy as np
+from absl import logging
 from jax import numpy as jnp
 from jax import random
-import numpy as np
 from typing_extensions import Protocol
+
+from flax.core import lift
+from flax.core.frozen_dict import FrozenDict
+from flax.linen import initializers, transforms
+from flax.linen.activation import sigmoid, tanh
+from flax.linen.dtypes import promote_dtype
+from flax.linen.linear import Conv, Dense, PrecisionLike, default_kernel_init
+from flax.linen.module import Module, compact, nowrap
 
 A = TypeVar('A')
 PRNGKey = jax.Array
@@ -51,47 +56,12 @@ CarryHistory = Any
 Output = Any
 
 
-class _Never:
-  pass
-
-
-NEVER = _Never()
-
-LEGACY_UPDATE_MESSAGE = (
-    'The RNNCellBase API has changed, '
-    'the error you are experiencing might be caused by this change. Please '
-    'update your code to the new API, for more information on how to do this '
-    'please check out the RNNCellBase migration guide: '
-    'https://flax.readthedocs.io/en/latest/guides/rnncell_upgrade_guide.html'
-)
-
-
-class RNNCellCompatibilityMeta(ABCMeta):
-  """Metaclass for RNNCell compatibility."""
-
-  def __call__(self, *args: Any, **kwds: Any) -> Any:
-    try:
-      return super().__call__(*args, **kwds)
-    except TypeError as e:
-      msg = e.args[0]
-      raise TypeError(f'{msg} \n\n {LEGACY_UPDATE_MESSAGE}') from e
-
-
-def deprecation_method_decorator(f):
-  def wrapper(*args, **kwargs):
-    if len(args) < 1 or not isinstance(args[0], RNNCellBase):
-      raise TypeError(LEGACY_UPDATE_MESSAGE)
-    return f(*args, **kwargs)
-
-  return wrapper
-
-
 class RNNCellBase(Module):
   """RNN cell base class."""
 
   @nowrap
   def initialize_carry(
-      self, rng: PRNGKey, input_shape: Tuple[int, ...]
+    self, rng: PRNGKey, input_shape: Tuple[int, ...]
   ) -> Carry:
     """Initialize the RNN cell carry.
 
@@ -110,7 +80,7 @@ class RNNCellBase(Module):
     raise NotImplementedError
 
 
-class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
+class LSTMCell(RNNCellBase):
   r"""LSTM cell.
 
   The mathematical definition of the cell is as follows
@@ -128,9 +98,20 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
   where x is the input, h is the output of the previous time step, and c is
   the memory.
 
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> x = jax.random.normal(jax.random.key(0), (2, 3))
+    >>> layer = nn.LSTMCell(features=4)
+    >>> carry = layer.initialize_carry(jax.random.key(1), x.shape)
+    >>> variables = layer.init(jax.random.key(2), carry, x)
+    >>> new_carry, out = layer.apply(variables, carry, x)
+
   Attributes:
     features: number of output features.
-    gate_fn: activation function used for gates (default: sigmoid)
+    gate_fn: activation function used for gates (default: sigmoid).
     activation_fn: activation function used for output and memory update
       (default: tanh).
     kernel_init: initializer function for the kernels that transform
@@ -141,6 +122,7 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     dtype: the dtype of the computation (default: infer from inputs and params).
     param_dtype: the dtype passed to parameter initializers (default: float32).
   """
+
   features: int
   gate_fn: Callable[..., Any] = sigmoid
   activation_fn: Callable[..., Any] = tanh
@@ -157,7 +139,7 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
 
     Args:
       carry: the hidden state of the LSTM cell,
-        initialized using `LSTMCell.initialize_carry`.
+        initialized using ``LSTMCell.initialize_carry``.
       inputs: an ndarray with the input for the current time step.
         All dimensions except the final are considered batch dimensions.
 
@@ -168,21 +150,21 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     hidden_features = h.shape[-1]
     # input and recurrent layers are summed so only one needs a bias.
     dense_h = partial(
-        Dense,
-        features=hidden_features,
-        use_bias=True,
-        kernel_init=self.recurrent_kernel_init,
-        bias_init=self.bias_init,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
+      Dense,
+      features=hidden_features,
+      use_bias=True,
+      kernel_init=self.recurrent_kernel_init,
+      bias_init=self.bias_init,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
     )
     dense_i = partial(
-        Dense,
-        features=hidden_features,
-        use_bias=False,
-        kernel_init=self.kernel_init,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
+      Dense,
+      features=hidden_features,
+      use_bias=False,
+      kernel_init=self.kernel_init,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
     )
     i = self.gate_fn(dense_i(name='ii')(inputs) + dense_h(name='hi')(h))
     f = self.gate_fn(dense_i(name='if')(inputs) + dense_h(name='hf')(h))
@@ -193,9 +175,8 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     return (new_c, new_h), new_h
 
   @nowrap
-  @deprecation_method_decorator
   def initialize_carry(
-      self, rng: PRNGKey, input_shape: Tuple[int, ...]
+    self, rng: PRNGKey, input_shape: Tuple[int, ...]
   ) -> Tuple[Array, Array]:
     """Initialize the RNN cell carry.
 
@@ -218,24 +199,24 @@ class LSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
 
 
 class DenseParams(Module):
-  """Dummy module for creating parameters matching `flax.linen.Dense`."""
+  """Dummy module for creating parameters matching ``flax.linen.Dense``."""
 
   features: int
   use_bias: bool = True
   param_dtype: Dtype = jnp.float32
   precision: PrecisionLike = None
   kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init
-  bias_init: Callable[[PRNGKey, Shape, Dtype], Array] = (
-      initializers.zeros_init()
-  )
+  bias_init: Callable[
+    [PRNGKey, Shape, Dtype], Array
+  ] = initializers.zeros_init()
 
   @compact
   def __call__(self, inputs: Array) -> Tuple[Array, Optional[Array]]:
     k = self.param(
-        'kernel',
-        self.kernel_init,
-        (inputs.shape[-1], self.features),
-        self.param_dtype,
+      'kernel',
+      self.kernel_init,
+      (inputs.shape[-1], self.features),
+      self.param_dtype,
     )
     if self.use_bias:
       b = self.param('bias', self.bias_init, (self.features,), self.param_dtype)
@@ -244,13 +225,13 @@ class DenseParams(Module):
     return k, b
 
 
-class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
+class OptimizedLSTMCell(RNNCellBase):
   r"""More efficient LSTM Cell that concatenates state components before matmul.
 
-  The parameters are compatible with `LSTMCell`. Note that this cell is often
-  faster than `LSTMCell` as long as the hidden size is roughly <= 2048 units.
+  The parameters are compatible with ``LSTMCell``. Note that this cell is often
+  faster than ``LSTMCell`` as long as the hidden size is roughly <= 2048 units.
 
-  The mathematical definition of the cell is the same as `LSTMCell` and as
+  The mathematical definition of the cell is the same as ``LSTMCell`` and as
   follows
 
   .. math::
@@ -267,6 +248,17 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
   where x is the input, h is the output of the previous time step, and c is
   the memory.
 
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> x = jax.random.normal(jax.random.key(0), (2, 3))
+    >>> layer = nn.OptimizedLSTMCell(features=4)
+    >>> carry = layer.initialize_carry(jax.random.key(1), x.shape)
+    >>> variables = layer.init(jax.random.key(2), carry, x)
+    >>> new_carry, out = layer.apply(variables, carry, x)
+
   Attributes:
     gate_fn: activation function used for gates (default: sigmoid).
     activation_fn: activation function used for output and memory update
@@ -279,6 +271,7 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     dtype: the dtype of the computation (default: infer from inputs and params).
     param_dtype: the dtype passed to parameter initializers (default: float32).
   """
+
   features: int
   gate_fn: Callable[..., Any] = sigmoid
   activation_fn: Callable[..., Any] = tanh
@@ -291,13 +284,13 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
 
   @compact
   def __call__(
-      self, carry: Tuple[Array, Array], inputs: Array
+    self, carry: Tuple[Array, Array], inputs: Array
   ) -> Tuple[Tuple[Array, Array], Array]:
     r"""An optimized long short-term memory (LSTM) cell.
 
     Args:
       carry: the hidden state of the LSTM cell, initialized using
-        `LSTMCell.initialize_carry`.
+        ``LSTMCell.initialize_carry``.
       inputs: an ndarray with the input for the current time step. All
         dimensions except the final are considered batch dimensions.
 
@@ -308,9 +301,9 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     hidden_features = h.shape[-1]
 
     def _concat_dense(
-        inputs: Array,
-        params: Mapping[str, Tuple[Array, Optional[Array]]],
-        use_bias: bool = True,
+      inputs: Array,
+      params: Mapping[str, Tuple[Array, Optional[Array]]],
+      use_bias: bool = True,
     ) -> Dict[str, Array]:
       # Concatenates the individual kernels and biases, given in params, into a
       # single kernel and single bias for efficiency before applying them using
@@ -327,7 +320,7 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
       else:
         bias = None
       inputs, kernel, bias = promote_dtype(
-          inputs, kernel, bias, dtype=self.dtype
+        inputs, kernel, bias, dtype=self.dtype
       )
       y = jnp.dot(inputs, kernel)
       if use_bias:
@@ -345,20 +338,20 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     dense_params_i = {}
     for component in ['i', 'f', 'g', 'o']:
       dense_params_i[component] = DenseParams(
-          features=hidden_features,
-          use_bias=False,
-          param_dtype=self.param_dtype,
-          kernel_init=self.kernel_init,
-          bias_init=self.bias_init,
-          name=f'i{component}',  # type: ignore[call-arg]
+        features=hidden_features,
+        use_bias=False,
+        param_dtype=self.param_dtype,
+        kernel_init=self.kernel_init,
+        bias_init=self.bias_init,
+        name=f'i{component}',  # type: ignore[call-arg]
       )(inputs)
       dense_params_h[component] = DenseParams(
-          features=hidden_features,
-          use_bias=True,
-          param_dtype=self.param_dtype,
-          kernel_init=self.recurrent_kernel_init,
-          bias_init=self.bias_init,
-          name=f'h{component}',  # type: ignore[call-arg]
+        features=hidden_features,
+        use_bias=True,
+        param_dtype=self.param_dtype,
+        kernel_init=self.recurrent_kernel_init,
+        bias_init=self.bias_init,
+        name=f'h{component}',  # type: ignore[call-arg]
       )(h)
     dense_h = _concat_dense(h, dense_params_h, use_bias=True)
     dense_i = _concat_dense(inputs, dense_params_i, use_bias=False)
@@ -373,9 +366,8 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     return (new_c, new_h), new_h
 
   @nowrap
-  @deprecation_method_decorator
   def initialize_carry(
-      self, rng: PRNGKey, input_shape: Tuple[int, ...]
+    self, rng: PRNGKey, input_shape: Tuple[int, ...]
   ) -> Tuple[Array, Array]:
     """Initialize the RNN cell carry.
 
@@ -398,7 +390,7 @@ class OptimizedLSTMCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     return 1
 
 
-class GRUCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
+class GRUCell(RNNCellBase):
   r"""GRU cell.
 
   The mathematical definition of the cell is as follows
@@ -406,16 +398,28 @@ class GRUCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
   .. math::
 
       \begin{array}{ll}
-      r = \sigma(W_{ir} x + W_{hr} h + b_{hr}) \\
-      z = \sigma(W_{iz} x + W_{hz} h + b_{hz}) \\
+      r = \sigma(W_{ir} x + b_{ir} + W_{hr} h) \\
+      z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) \\
       n = \tanh(W_{in} x + b_{in} + r * (W_{hn} h + b_{hn})) \\
       h' = (1 - z) * n + z * h \\
       \end{array}
 
   where x is the input and h, is the output of the previous time step.
 
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> x = jax.random.normal(jax.random.key(0), (2, 3))
+    >>> layer = nn.GRUCell(features=4)
+    >>> carry = layer.initialize_carry(jax.random.key(1), x.shape)
+    >>> variables = layer.init(jax.random.key(2), carry, x)
+    >>> new_carry, out = layer.apply(variables, carry, x)
+
   Attributes:
-    gate_fn: activation function used for gates (default: sigmoid)
+    features: number of output features.
+    gate_fn: activation function used for gates (default: sigmoid).
     activation_fn: activation function used for output and memory update
       (default: tanh).
     kernel_init: initializer function for the kernels that transform
@@ -426,6 +430,7 @@ class GRUCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     dtype: the dtype of the computation (default: None).
     param_dtype: the dtype passed to parameter initializers (default: float32).
   """
+
   features: int
   gate_fn: Callable[..., Any] = sigmoid
   activation_fn: Callable[..., Any] = tanh
@@ -442,7 +447,7 @@ class GRUCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
 
     Args:
       carry: the hidden state of the GRU cell,
-        initialized using `GRUCell.initialize_carry`.
+        initialized using ``GRUCell.initialize_carry``.
       inputs: an ndarray with the input for the current time step.
         All dimensions except the final are considered batch dimensions.
 
@@ -453,34 +458,154 @@ class GRUCell(RNNCellBase, metaclass=RNNCellCompatibilityMeta):
     hidden_features = h.shape[-1]
     # input and recurrent layers are summed so only one needs a bias.
     dense_h = partial(
-        Dense,
-        features=hidden_features,
-        use_bias=False,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
-        kernel_init=self.recurrent_kernel_init,
-        bias_init=self.bias_init,
+      Dense,
+      features=hidden_features,
+      use_bias=False,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      kernel_init=self.recurrent_kernel_init,
+      bias_init=self.bias_init,
     )
     dense_i = partial(
-        Dense,
-        features=hidden_features,
-        use_bias=True,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
-        kernel_init=self.kernel_init,
-        bias_init=self.bias_init,
+      Dense,
+      features=hidden_features,
+      use_bias=True,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      kernel_init=self.kernel_init,
+      bias_init=self.bias_init,
     )
     r = self.gate_fn(dense_i(name='ir')(inputs) + dense_h(name='hr')(h))
     z = self.gate_fn(dense_i(name='iz')(inputs) + dense_h(name='hz')(h))
     # add bias because the linear transformations aren't directly summed.
     n = self.activation_fn(
-        dense_i(name='in')(inputs) + r * dense_h(name='hn', use_bias=True)(h)
+      dense_i(name='in')(inputs) + r * dense_h(name='hn', use_bias=True)(h)
     )
     new_h = (1.0 - z) * n + z * h
     return new_h, new_h
 
   @nowrap
-  @deprecation_method_decorator
+  def initialize_carry(self, rng: PRNGKey, input_shape: Tuple[int, ...]):
+    """Initialize the RNN cell carry.
+
+    Args:
+      rng: random number generator passed to the init_fn.
+      input_shape: a tuple providing the shape of the input to the cell.
+
+    Returns:
+      An initialized carry for the given RNN cell.
+    """
+    batch_dims = input_shape[:-1]
+    mem_shape = batch_dims + (self.features,)
+    return self.carry_init(rng, mem_shape, self.param_dtype)
+
+  @property
+  def num_feature_axes(self) -> int:
+    return 1
+
+
+class MGUCell(RNNCellBase):
+  r"""MGU cell (https://arxiv.org/pdf/1603.09420.pdf).
+
+  The mathematical definition of the cell is as follows
+
+  .. math::
+
+      \begin{array}{ll}
+      f = \sigma(W_{if} x + b_{if} + W_{hf} h) \\
+      n = \tanh(W_{in} x + b_{in} + f * (W_{hn} h + b_{hn})) \\
+      h' = (1 - f) * n + f * h \\
+      \end{array}
+
+  where x is the input and h, is the output of the previous time step.
+
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> x = jax.random.normal(jax.random.key(0), (2, 3))
+    >>> layer = nn.MGUCell(features=4)
+    >>> carry = layer.initialize_carry(jax.random.key(1), x.shape)
+    >>> variables = layer.init(jax.random.key(2), carry, x)
+    >>> new_carry, out = layer.apply(variables, carry, x)
+
+  Attributes:
+    features: number of output features.
+    gate_fn: activation function used for gates (default: sigmoid).
+    activation_fn: activation function used for output and memory update
+      (default: tanh).
+    kernel_init: initializer function for the kernels that transform
+      the input (default: lecun_normal).
+    recurrent_kernel_init: initializer function for the kernels that transform
+      the hidden state (default: initializers.orthogonal()).
+    forget_bias_init: initializer for the bias parameters of the forget gate.
+      The default is set to initializers.ones_init() because this prevents
+      vanishing gradients. See https://proceedings.mlr.press/v37/jozefowicz15.pdf,
+      section 2.2 for more details.
+    activation_bias_init: initializer for the bias parameters of the activation
+      output (default: initializers.zeros_init()).
+    dtype: the dtype of the computation (default: None).
+    param_dtype: the dtype passed to parameter initializers (default: float32).
+  """
+
+  features: int
+  gate_fn: Callable[..., Any] = sigmoid
+  activation_fn: Callable[..., Any] = tanh
+  kernel_init: initializers.Initializer = default_kernel_init
+  recurrent_kernel_init: initializers.Initializer = initializers.orthogonal()
+  forget_bias_init: initializers.Initializer = initializers.ones_init()
+  activation_bias_init: initializers.Initializer = initializers.zeros_init()
+  dtype: Optional[Dtype] = None
+  param_dtype: Dtype = jnp.float32
+  carry_init: initializers.Initializer = initializers.zeros_init()
+
+  @compact
+  def __call__(self, carry, inputs):
+    """Minimal gated unit (MGU) cell.
+
+    Args:
+      carry: the hidden state of the MGU cell,
+        initialized using ``MGUCell.initialize_carry``.
+      inputs: an ndarray with the input for the current time step.
+        All dimensions except the final are considered batch dimensions.
+
+    Returns:
+      A tuple with the new carry and the output.
+    """
+    h = carry
+    hidden_features = h.shape[-1]
+    # input and recurrent layers are summed so only one needs a bias.
+    dense_h = partial(
+      Dense,
+      features=hidden_features,
+      use_bias=False,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      kernel_init=self.recurrent_kernel_init,
+      bias_init=self.activation_bias_init,
+    )
+    dense_i = partial(
+      Dense,
+      features=hidden_features,
+      use_bias=True,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      kernel_init=self.kernel_init,
+    )
+    f = self.gate_fn(
+      dense_i(name='if', bias_init=self.forget_bias_init)(inputs)
+      + dense_h(name='hf')(h)
+    )
+    # add bias because the linear transformations aren't directly summed.
+    n = self.activation_fn(
+      dense_i(name='in', bias_init=self.activation_bias_init)(inputs)
+      + f * dense_h(name='hn', use_bias=True)(h)
+    )
+    new_h = (1.0 - f) * n + f * h
+    return new_h, new_h
+
+  @nowrap
   def initialize_carry(self, rng: PRNGKey, input_shape: Tuple[int, ...]):
     """Initialize the RNN cell carry.
 
@@ -528,13 +653,24 @@ class ConvLSTMCell(RNNCellBase):
       after initialization in order to reduce the scale of forgetting in
       the beginning of the training.
 
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> x = jax.random.normal(jax.random.key(0), (3, 5, 5))
+    >>> layer = nn.ConvLSTMCell(features=4, kernel_size=(2, 2))
+    >>> carry = layer.initialize_carry(jax.random.key(1), x.shape)
+    >>> variables = layer.init(jax.random.key(2), carry, x)
+    >>> new_carry, out = layer.apply(variables, carry, x)
+
   Attributes:
     features: number of convolution filters.
     kernel_size: shape of the convolutional kernel.
-    strides: a sequence of `n` integers, representing the inter-window
+    strides: a sequence of ``n`` integers, representing the inter-window
       strides.
-    padding: either the string `'SAME'`, the string `'VALID'`, or a sequence
-      of `n` `(low, high)` integer pairs that give the padding to apply before
+    padding: either the string ``'SAME'``, the string ``'VALID'``, or a sequence
+      of ``n`` ``(low, high)`` integer pairs that give the padding to apply before
       and after each spatial dimension.
     bias: whether to add a bias to the output (default: True).
     dtype: the dtype of the computation (default: None).
@@ -556,34 +692,34 @@ class ConvLSTMCell(RNNCellBase):
 
     Args:
       carry: the hidden state of the Conv2DLSTM cell,
-        initialized using `Conv2DLSTM.initialize_carry`.
+        initialized using ``Conv2DLSTM.initialize_carry``.
       inputs: input data with dimensions (batch, spatial_dims..., features).
     Returns:
       A tuple with the new carry and the output.
     """
     c, h = carry
     input_to_hidden = partial(
-        Conv,
-        features=4 * self.features,
-        kernel_size=self.kernel_size,
-        strides=self.strides,
-        padding=self.padding,
-        use_bias=self.use_bias,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
-        name='ih',
+      Conv,
+      features=4 * self.features,
+      kernel_size=self.kernel_size,
+      strides=self.strides,
+      padding=self.padding,
+      use_bias=self.use_bias,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      name='ih',
     )
 
     hidden_to_hidden = partial(
-        Conv,
-        features=4 * self.features,
-        kernel_size=self.kernel_size,
-        strides=self.strides,
-        padding=self.padding,
-        use_bias=self.use_bias,
-        dtype=self.dtype,
-        param_dtype=self.param_dtype,
-        name='hh',
+      Conv,
+      features=4 * self.features,
+      kernel_size=self.kernel_size,
+      strides=self.strides,
+      padding=self.padding,
+      use_bias=self.use_bias,
+      dtype=self.dtype,
+      param_dtype=self.param_dtype,
+      name='hh',
     )
 
     gates = input_to_hidden()(inputs) + hidden_to_hidden()(h)
@@ -595,7 +731,6 @@ class ConvLSTMCell(RNNCellBase):
     return (new_c, new_h), new_h
 
   @nowrap
-  @deprecation_method_decorator
   def initialize_carry(self, rng: PRNGKey, input_shape: Tuple[int, ...]):
     """Initialize the RNN cell carry.
 
@@ -629,7 +764,7 @@ class RNN(Module):
     >>> import jax.numpy as jnp
     >>> import jax
     >>> import flax.linen as nn
-    ...
+
     >>> x = jnp.ones((10, 50, 32)) # (batch, time, features)
     >>> lstm = nn.RNN(nn.LSTMCell(64))
     >>> variables = lstm.init(jax.random.key(0), x)
@@ -705,57 +840,48 @@ class RNN(Module):
       useful to align sequences in bidirectional RNNs. If ``keep_order=False`` (default),
       the output will remain in the order specified by ``reverse``.
     unroll: how many scan iterations to unroll within a single iteration of a loop,
-      defaults to 1. This argument will be passed to `nn.scan`.
-    variable_axes: a dictionary mapping each collection to either an integer `i` (meaning we scan over
-      dimension `i`) or `None` (replicate rather than scan). This argument is forwarded to `nn.scan`.
+      defaults to 1. This argument will be passed to ``nn.scan``.
+    variable_axes: a dictionary mapping each collection to either an integer ``i`` (meaning we scan over
+      dimension ``i``) or ``None`` (replicate rather than scan). This argument is forwarded to ``nn.scan``.
     variable_broadcast: Specifies the broadcasted variable collections. A
       broadcasted variable should not depend on any computation that cannot be
       lifted out of the loop. This is typically used to define shared parameters
-      inside the fn. This argument is forwarded to `nn.scan`.
+      inside the fn. This argument is forwarded to ``nn.scan``.
     variable_carry: Specifies the variable collections that are carried through
       the loop. Mutations to these variables are carried to the next iteration
       and will be preserved when the scan finishes. This argument is forwarded to
-      `nn.scan`.
+      ``nn.scan``.
     split_rngs: a mapping from PRNGSequenceFilter to bool specifying whether a collection's
       PRNG key should be split such that its values are different at each step, or replicated
-      such that its values remain the same at each step. This argument is forwarded to `nn.scan`.
+      such that its values remain the same at each step. This argument is forwarded to ``nn.scan``.
   """
 
   cell: RNNCellBase
-  cell_size: Any = NEVER
   time_major: bool = False
   return_carry: bool = False
   reverse: bool = False
   keep_order: bool = False
   unroll: int = 1
-  variable_axes: Mapping[lift.CollectionFilter, lift.InOutScanAxis] = (
-      FrozenDict()
-  )
+  variable_axes: Mapping[
+    lift.CollectionFilter, lift.InOutScanAxis
+  ] = FrozenDict()
   variable_broadcast: lift.CollectionFilter = 'params'
   variable_carry: lift.CollectionFilter = False
   split_rngs: Mapping[lift.PRNGSequenceFilter, bool] = FrozenDict(
-      {'params': False}
+    {'params': False}
   )
 
-  def __post_init__(self) -> None:
-    if self.cell_size is not NEVER:
-      raise TypeError(
-          f'The `cell_size` argument is no longer available`. '
-          + LEGACY_UPDATE_MESSAGE
-      )
-    return super().__post_init__()
-
   def __call__(
-      self,
-      inputs: jax.Array,
-      *,
-      initial_carry: Optional[Carry] = None,
-      init_key: Optional[PRNGKey] = None,
-      seq_lengths: Optional[Array] = None,
-      return_carry: Optional[bool] = None,
-      time_major: Optional[bool] = None,
-      reverse: Optional[bool] = None,
-      keep_order: Optional[bool] = None,
+    self,
+    inputs: jax.Array,
+    *,
+    initial_carry: Optional[Carry] = None,
+    init_key: Optional[PRNGKey] = None,
+    seq_lengths: Optional[Array] = None,
+    return_carry: Optional[bool] = None,
+    time_major: Optional[bool] = None,
+    reverse: Optional[bool] = None,
+    keep_order: Optional[bool] = None,
   ) -> Union[Output, Tuple[Carry, Output]]:
     """
     Applies the RNN to the inputs.
@@ -803,7 +929,7 @@ class RNN(Module):
     # Infer the number of batch dimensions from the input shape.
     # Cells like ConvLSTM have additional spatial dimensions.
     time_axis = (
-        0 if time_major else inputs.ndim - (self.cell.num_feature_axes + 1)
+      0 if time_major else inputs.ndim - (self.cell.num_feature_axes + 1)
     )
 
     # make time_axis positive
@@ -819,10 +945,13 @@ class RNN(Module):
     # maybe reverse the sequence
     if reverse:
       inputs = jax.tree_map(
-          lambda x: flip_sequences(
-              x, seq_lengths, num_batch_dims=len(batch_dims), time_major=time_major  # type: ignore
-          ),
-          inputs,
+        lambda x: flip_sequences(
+          x,
+          seq_lengths,
+          num_batch_dims=len(batch_dims),
+          time_major=time_major,  # type: ignore
+        ),
+        inputs,
       )
 
     carry: Carry
@@ -838,7 +967,7 @@ class RNN(Module):
     slice_carry = seq_lengths is not None and return_carry
 
     def scan_fn(
-        cell: RNNCellBase, carry: Carry, x: Array
+      cell: RNNCellBase, carry: Carry, x: Array
     ) -> Union[Tuple[Carry, Array], Tuple[Carry, Tuple[Carry, Array]]]:
       carry, y = cell(carry, x)
       # When we have a segmentation mask we return the carry as an output
@@ -851,14 +980,14 @@ class RNN(Module):
         return carry, y
 
     scan = transforms.scan(
-        scan_fn,
-        in_axes=time_axis,
-        out_axes=(0, time_axis) if slice_carry else time_axis,
-        unroll=self.unroll,
-        variable_axes=self.variable_axes,
-        variable_broadcast=self.variable_broadcast,
-        variable_carry=self.variable_carry,
-        split_rngs=self.split_rngs,
+      scan_fn,
+      in_axes=time_axis,
+      out_axes=(0, time_axis) if slice_carry else time_axis,
+      unroll=self.unroll,
+      variable_axes=self.variable_axes,
+      variable_broadcast=self.variable_broadcast,
+      variable_carry=self.variable_carry,
+      split_rngs=self.split_rngs,
     )
 
     scan_output = scan(self.cell, carry, inputs)
@@ -877,10 +1006,13 @@ class RNN(Module):
 
     if reverse and keep_order:
       outputs = jax.tree_map(
-          lambda x: flip_sequences(
-              x, seq_lengths, num_batch_dims=len(batch_dims), time_major=time_major  # type: ignore
-          ),
-          outputs,
+        lambda x: flip_sequences(
+          x,
+          seq_lengths,
+          num_batch_dims=len(batch_dims),
+          time_major=time_major,  # type: ignore
+        ),
+        outputs,
       )
 
     if return_carry:
@@ -904,10 +1036,10 @@ def _expand_dims_like(x, target):
 
 
 def flip_sequences(
-    inputs: Array,
-    seq_lengths: Optional[Array],
-    num_batch_dims: int,
-    time_major: bool,
+  inputs: Array,
+  seq_lengths: Optional[Array],
+  num_batch_dims: int,
+  time_major: bool,
 ) -> Array:
   """Flips a sequence of inputs along the time axis.
 
@@ -952,11 +1084,11 @@ def flip_sequences(
     idxs = jnp.reshape(idxs, [max_steps] + [1] * num_batch_dims)
   else:
     idxs = jnp.reshape(
-        idxs, [1] * num_batch_dims + [max_steps]
+      idxs, [1] * num_batch_dims + [max_steps]
     )  # [1, ..., max_steps]
   idxs = (idxs + seq_lengths) % max_steps  # [*batch, max_steps]
   idxs = _expand_dims_like(
-      idxs, target=inputs
+    idxs, target=inputs
   )  # [*batch, max_steps, *features]
   # Select the inputs in flipped order.
   outputs = jnp.take_along_axis(inputs, idxs, axis=time_axis)
@@ -970,24 +1102,34 @@ def _concatenate(a: Array, b: Array) -> Array:
 
 
 class RNNBase(Protocol):
-
   def __call__(
-      self,
-      inputs: jax.Array,
-      *,
-      initial_carry: Optional[Carry] = None,
-      init_key: Optional[PRNGKey] = None,
-      seq_lengths: Optional[Array] = None,
-      return_carry: Optional[bool] = None,
-      time_major: Optional[bool] = None,
-      reverse: Optional[bool] = None,
-      keep_order: Optional[bool] = None,
+    self,
+    inputs: jax.Array,
+    *,
+    initial_carry: Optional[Carry] = None,
+    init_key: Optional[PRNGKey] = None,
+    seq_lengths: Optional[Array] = None,
+    return_carry: Optional[bool] = None,
+    time_major: Optional[bool] = None,
+    reverse: Optional[bool] = None,
+    keep_order: Optional[bool] = None,
   ) -> Union[Output, Tuple[Carry, Output]]:
     ...
 
 
 class Bidirectional(Module):
-  """Processes the input in both directions and merges the results."""
+  """Processes the input in both directions and merges the results.
+
+  Example usage::
+
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> layer = nn.Bidirectional(nn.RNN(nn.GRUCell(4)), nn.RNN(nn.GRUCell(4)))
+    >>> x = jnp.ones((2, 3))
+    >>> variables = layer.init(jax.random.key(0), x)
+    >>> out = layer.apply(variables, x)
+  """
 
   forward_rnn: RNNBase
   backward_rnn: RNNBase
@@ -996,16 +1138,16 @@ class Bidirectional(Module):
   return_carry: bool = False
 
   def __call__(
-      self,
-      inputs: jax.Array,
-      *,
-      initial_carry: Optional[Carry] = None,
-      init_key: Optional[PRNGKey] = None,
-      seq_lengths: Optional[Array] = None,
-      return_carry: Optional[bool] = None,
-      time_major: Optional[bool] = None,
-      reverse: Optional[bool] = None,
-      keep_order: Optional[bool] = None,
+    self,
+    inputs: jax.Array,
+    *,
+    initial_carry: Optional[Carry] = None,
+    init_key: Optional[PRNGKey] = None,
+    seq_lengths: Optional[Array] = None,
+    return_carry: Optional[bool] = None,
+    time_major: Optional[bool] = None,
+    reverse: Optional[bool] = None,
+    keep_order: Optional[bool] = None,
   ) -> Union[Output, Tuple[Carry, Output]]:
     if time_major is None:
       time_major = self.time_major
@@ -1023,32 +1165,32 @@ class Bidirectional(Module):
     # for the backward pass and does not intend for them to share parameters.
     if self.forward_rnn is self.backward_rnn:
       logging.warning(
-          (
-              'forward_rnn and backward_rnn is the same object, so '
-              'they will share parameters.'
-          )
+        (
+          'forward_rnn and backward_rnn is the same object, so '
+          'they will share parameters.'
+        )
       )
 
     # Encode in the forward direction.
     carry_forward, outputs_forward = self.forward_rnn(
-        inputs,
-        initial_carry=initial_carry_forward,
-        init_key=key_forward,
-        seq_lengths=seq_lengths,
-        return_carry=True,
-        time_major=time_major,
-        reverse=False,
+      inputs,
+      initial_carry=initial_carry_forward,
+      init_key=key_forward,
+      seq_lengths=seq_lengths,
+      return_carry=True,
+      time_major=time_major,
+      reverse=False,
     )
 
     carry_backward, outputs_backward = self.backward_rnn(
-        inputs,
-        initial_carry=initial_carry_backward,
-        init_key=key_backward,
-        seq_lengths=seq_lengths,
-        return_carry=True,
-        time_major=time_major,
-        reverse=True,
-        keep_order=True,
+      inputs,
+      initial_carry=initial_carry_backward,
+      init_key=key_backward,
+      seq_lengths=seq_lengths,
+      return_carry=True,
+      time_major=time_major,
+      reverse=True,
+      keep_order=True,
     )
 
     carry = (carry_forward, carry_backward)

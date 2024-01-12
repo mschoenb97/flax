@@ -19,3 +19,9 @@ requirements.txt
 
 # used by direnv
 .envrc
+<<<<<<< HEAD
+=======
+
+# custom
+/tmp-files
+>>>>>>> upstream/main

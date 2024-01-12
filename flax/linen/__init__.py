@@ -32,6 +32,7 @@ from ..core.meta import (
     with_partitioning as with_partitioning,
 )
 from .activation import (
+    GeGLU as GeGLU,
     PReLU as PReLU,
     celu as celu,
     elu as elu,
@@ -69,6 +70,7 @@ from .attention import (
     make_causal_mask as make_causal_mask,
 )
 from .combinators import Sequential as Sequential
+from .fp8_ops import Fp8DotGeneralOp as Fp8DotGeneralOp
 from .initializers import (
     ones_init as ones_init,
     ones as ones,
@@ -102,12 +104,15 @@ from .normalization import (
     GroupNorm as GroupNorm,
     LayerNorm as LayerNorm,
     RMSNorm as RMSNorm,
+    SpectralNorm as SpectralNorm,
+    WeightNorm as WeightNorm
 )
 from .pooling import (avg_pool as avg_pool, max_pool as max_pool, pool as pool)
 from .recurrent import (
     Bidirectional as Bidirectional,
     ConvLSTMCell as ConvLSTMCell,
     GRUCell as GRUCell,
+    MGUCell as MGUCell,
     LSTMCell as LSTMCell,
     OptimizedLSTMCell as OptimizedLSTMCell,
     RNNCellBase as RNNCellBase,
@@ -140,6 +145,8 @@ from .transforms import (
     scan as scan,
     switch as switch,
     vjp as vjp,
+    grad as grad,
+    value_and_grad as value_and_grad,
     vmap as vmap,
     while_loop as while_loop,
 )

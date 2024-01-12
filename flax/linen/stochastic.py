@@ -14,16 +14,13 @@
 
 """Stochastic modules."""
 
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
 import jax
-
-from flax.linen.module import compact
-from flax.linen.module import merge_param
-from flax.linen.module import Module
-from jax import lax
-from jax import random
 import jax.numpy as jnp
+from jax import lax, random
+
+from flax.linen.module import Module, compact, merge_param
 
 KeyArray = jax.Array
 
@@ -32,15 +29,31 @@ class Dropout(Module):
   """Create a dropout layer.
 
   Note: When using :meth:`Module.apply() <flax.linen.Module.apply>`, make sure
-  to include an RNG seed named `'dropout'`. For example::
+  to include an RNG seed named ``'dropout'``. Dropout isn't necessary for
+  variable initialization. Example usage::
 
-    model.apply({'params': params}, inputs=inputs, train=True, rngs={'dropout':
-    dropout_rng})`
+    >>> import flax.linen as nn
+    >>> import jax, jax.numpy as jnp
+
+    >>> class MLP(nn.Module):
+    ...   @nn.compact
+    ...   def __call__(self, x, train):
+    ...     x = nn.Dense(4)(x)
+    ...     x = nn.Dropout(0.5, deterministic=not train)(x)
+    ...     return x
+
+    >>> model = MLP()
+    >>> x = jnp.ones((1, 3))
+    >>> variables = model.init(jax.random.key(0), x, train=False) # don't use dropout
+    >>> model.apply(variables, x, train=False) # don't use dropout
+    Array([[-0.88686204, -0.5928178 , -0.5184689 , -0.4345976 ]], dtype=float32)
+    >>> model.apply(variables, x, train=True, rngs={'dropout': jax.random.key(1)}) # use dropout
+    Array([[ 0.       , -1.1856356, -1.0369378,  0.       ]], dtype=float32)
 
   Attributes:
     rate: the dropout probability.  (_not_ the keep rate!)
     broadcast_dims: dimensions that will share the same dropout mask
-    deterministic: if false the inputs are scaled by `1 / (1 - rate)` and
+    deterministic: if false the inputs are scaled by ``1 / (1 - rate)`` and
       masked, whereas if true, no mask is applied and the inputs are returned as
       is.
     rng_collection: the rng collection name to use when requesting an rng key.
@@ -53,16 +66,16 @@ class Dropout(Module):
 
   @compact
   def __call__(
-      self,
-      inputs,
-      deterministic: Optional[bool] = None,
-      rng: Optional[KeyArray] = None,
+    self,
+    inputs,
+    deterministic: Optional[bool] = None,
+    rng: Optional[KeyArray] = None,
   ):
     """Applies a random dropout mask to the input.
 
     Args:
       inputs: the inputs that should be randomly masked.
-      deterministic: if false the inputs are scaled by `1 / (1 - rate)` and
+      deterministic: if false the inputs are scaled by ``1 / (1 - rate)`` and
         masked, whereas if true, no mask is applied and the inputs are returned
         as is.
       rng: an optional PRNGKey used as the random key, if not specified, one
@@ -72,7 +85,7 @@ class Dropout(Module):
       The masked inputs reweighted to preserve mean.
     """
     deterministic = merge_param(
-        'deterministic', self.deterministic, deterministic
+      'deterministic', self.deterministic, deterministic
     )
 
     if (self.rate == 0.0) or deterministic:

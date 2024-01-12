@@ -17,12 +17,11 @@
 import functools
 from typing import Any, Callable, NamedTuple, Optional, Sequence, Union
 
-from flax import struct
-
 import jax
-from jax import lax
 import jax.numpy as jnp
+from jax import lax
 
+from flax import struct
 
 Array = Any
 
@@ -86,31 +85,35 @@ class DynamicScale(struct.PyTreeNode):
   fin_steps: Array = 0
   scale: Array = 65536.0
   minimum_scale: Optional[float] = struct.field(
-      pytree_node=False, default=jnp.finfo(jnp.float32).tiny
+    pytree_node=False, default=jnp.finfo(jnp.float32).tiny
   )
 
   def value_and_grad(
-      self,
-      fun: Callable[..., Any],
-      argnums: Union[int, Sequence[int]] = 0,
-      has_aux: bool = False,
-      axis_name: Optional[str] = None,
+    self,
+    fun: Callable[..., Any],
+    argnums: Union[int, Sequence[int]] = 0,
+    has_aux: bool = False,
+    axis_name: Optional[str] = None,
   ) -> Callable[..., DynamicScaleResult]:
     """Wrapper around `jax.value_and_grad`.
 
     Args:
       fun: Function to be differentiated. Its arguments at positions specified
         by ``argnums`` should be arrays, scalars, or standard Python containers.
-        It should return a scalar (which includes arrays with shape ``()``
-        but not arrays with shape ``(1,)`` etc.)
+        It should return a scalar (which includes arrays with shape ``()`` but
+        not arrays with shape ``(1,)`` etc.)
       argnums: Optional, integer or sequence of integers. Specifies which
         positional argument(s) to differentiate with respect to (default 0).
       has_aux: Optional, bool. Indicates whether ``fun`` returns a pair where
         the first element is considered the output of the mathematical function
-        to be differentiated and the second element is auxiliary data.
-        Default False.
+        to be differentiated and the second element is auxiliary data. Default
+        False.
       axis_name: If an axis is given the gradients will be averaged across
-        replicas (default: None).
+        replicas (default: None). Note, this is only used for pmap and shard
+        map. For SPMD jit, you do not need to manually synchronize. Just make
+        sure that the axes are correctly annotated and XLA:SPMD will insert the
+        necessary collectives.
+
     Returns:
       A function that takes the same arguments as `fun` and
       returns a DynamicScaleResult
@@ -131,7 +134,7 @@ class DynamicScale(struct.PyTreeNode):
       aux = (aux[0] / self.scale, aux[1]) if has_aux else aux / self.scale
 
       grad = jax.tree_util.tree_map(
-          lambda g: jnp.asarray(g, jnp.float32) / self.scale, grad
+        lambda g: jnp.asarray(g, jnp.float32) / self.scale, grad
       )
       if axis_name is not None:
         grad = lax.pmean(grad, axis_name)
@@ -142,11 +145,11 @@ class DynamicScale(struct.PyTreeNode):
 
       grow = self.fin_steps == self.growth_interval
       fin_scale = jnp.where(
-          grow & finite,
-          jnp.minimum(
-              self.scale * self.growth_factor, jnp.finfo(jnp.float32).max
-          ),
-          self.scale,
+        grow & finite,
+        jnp.minimum(
+          self.scale * self.growth_factor, jnp.finfo(jnp.float32).max
+        ),
+        self.scale,
       )
       inf_scale = self.scale * self.backoff_factor
       if self.minimum_scale is not None:

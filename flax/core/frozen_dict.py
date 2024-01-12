@@ -15,11 +15,12 @@
 """Frozen Dictionary."""
 
 import collections
-from typing import Any, Dict, Hashable, Optional, Mapping, Tuple, TypeVar, Union
 from types import MappingProxyType
+from typing import Any, Dict, Hashable, Mapping, Tuple, TypeVar, Union
+
+import jax
 
 from flax import serialization
-import jax
 
 
 class FrozenKeysView(collections.abc.KeysView):
@@ -113,7 +114,7 @@ class FrozenDict(Mapping[K, V]):
     return self._hash
 
   def copy(
-      self, add_or_replace: Mapping[K, V] = MappingProxyType({})
+    self, add_or_replace: Mapping[K, V] = MappingProxyType({})
   ) -> 'FrozenDict[K, V]':
     """Create a new FrozenDict with additional or replaced entries."""
     return type(self)({**self, **unfreeze(add_or_replace)})  # type: ignore[arg-type]
@@ -133,7 +134,9 @@ class FrozenDict(Mapping[K, V]):
 
     Example::
 
-      state, params = variables.pop('params')
+      >>> from flax.core import FrozenDict
+      >>> variables = FrozenDict({'params': {...}, 'batch_stats': {...}})
+      >>> new_variables, params = variables.pop('params')
 
     Args:
       key: the key to remove from the dict
@@ -162,7 +165,7 @@ class FrozenDict(Mapping[K, V]):
     """
     sorted_keys = sorted(self._dict)
     return tuple(
-        [(jax.tree_util.DictKey(k), self._dict[k]) for k in sorted_keys]
+      [(jax.tree_util.DictKey(k), self._dict[k]) for k in sorted_keys]
     ), tuple(sorted_keys)
 
   @classmethod
@@ -188,7 +191,7 @@ def _prepare_freeze(xs: Any) -> Any:
 def freeze(xs: Mapping[Any, Any]) -> FrozenDict[Any, Any]:
   """Freeze a nested dict.
 
-  Makes a nested `dict` immutable by transforming it into `FrozenDict`.
+  Makes a nested ``dict`` immutable by transforming it into ``FrozenDict``.
 
   Args:
     xs: Dictionary to freeze (a regualr Python dict).
@@ -201,7 +204,7 @@ def freeze(xs: Mapping[Any, Any]) -> FrozenDict[Any, Any]:
 def unfreeze(x: Union[FrozenDict, Dict[str, Any]]) -> Dict[Any, Any]:
   """Unfreeze a FrozenDict.
 
-  Makes a mutable copy of a `FrozenDict` mutable by transforming
+  Makes a mutable copy of a ``FrozenDict`` mutable by transforming
   it into (nested) dict.
 
   Args:
@@ -225,18 +228,18 @@ def unfreeze(x: Union[FrozenDict, Dict[str, Any]]) -> Dict[Any, Any]:
 
 
 def copy(
-    x: Union[FrozenDict, Dict[str, Any]],
-    add_or_replace: Union[FrozenDict[str, Any], Dict[str, Any]] = FrozenDict(
-        {}
-    ),
+  x: Union[FrozenDict, Dict[str, Any]],
+  add_or_replace: Union[FrozenDict[str, Any], Dict[str, Any]] = FrozenDict({}),
 ) -> Union[FrozenDict, Dict[str, Any]]:
   """Create a new dict with additional and/or replaced entries. This is a utility
   function that can act on either a FrozenDict or regular dict and mimics the
-  behavior of `FrozenDict.copy`.
+  behavior of ``FrozenDict.copy``.
 
   Example::
 
-  new_variables = copy(variables, {'additional_entries': 1})
+    >>> from flax.core import FrozenDict, copy
+    >>> variables = FrozenDict({'params': {...}, 'batch_stats': {...}})
+    >>> new_variables = copy(variables, {'additional_entries': 1})
 
   Args:
     x: the dictionary to be copied and updated
@@ -255,15 +258,17 @@ def copy(
 
 
 def pop(
-    x: Union[FrozenDict, Dict[str, Any]], key: str
+  x: Union[FrozenDict, Dict[str, Any]], key: str
 ) -> Tuple[Union[FrozenDict, Dict[str, Any]], Any]:
   """Create a new dict where one entry is removed. This is a utility
   function that can act on either a FrozenDict or regular dict and
-  mimics the behavior of `FrozenDict.pop`.
+  mimics the behavior of ``FrozenDict.pop``.
 
   Example::
 
-    state, params = pop(variables, 'params')
+    >>> from flax.core import FrozenDict, pop
+    >>> variables = FrozenDict({'params': {...}, 'batch_stats': {...}})
+    >>> new_variables, params = pop(variables, 'params')
 
   Args:
     x: the dictionary to remove the entry from
@@ -284,8 +289,8 @@ def pop(
 def pretty_repr(x: Any, num_spaces: int = 4) -> str:
   """Returns an indented representation of the nested dictionary.
   This is a utility function that can act on either a FrozenDict or
-  regular dict and mimics the behavior of `FrozenDict.pretty_repr`.
-  If x is any other dtype, this function will return `repr(x)`.
+  regular dict and mimics the behavior of ``FrozenDict.pretty_repr``.
+  If x is any other dtype, this function will return ``repr(x)``.
 
   Args:
     x: the dictionary to be represented
@@ -320,19 +325,19 @@ def _restore_frozen_dict(xs, states):
   diff = set(map(str, xs.keys())).difference(states.keys())
   if diff:
     raise ValueError(
-        'The target dict keys and state dict keys do not match, target dict'
-        f' contains keys {diff} which are not present in state dict at path'
-        f' {serialization.current_path()}'
+      'The target dict keys and state dict keys do not match, target dict'
+      f' contains keys {diff} which are not present in state dict at path'
+      f' {serialization.current_path()}'
     )
 
   return FrozenDict(
-      {
-          key: serialization.from_state_dict(value, states[key], name=key)
-          for key, value in xs.items()
-      }
+    {
+      key: serialization.from_state_dict(value, states[key], name=key)
+      for key, value in xs.items()
+    }
   )
 
 
 serialization.register_serialization_state(
-    FrozenDict, _frozen_dict_state_dict, _restore_frozen_dict
+  FrozenDict, _frozen_dict_state_dict, _restore_frozen_dict
 )

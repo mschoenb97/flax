@@ -88,7 +88,7 @@ To install some additional dependencies (like `matplotlib`) that are required bu
 by some dependencies, you can use:
 
 ```bash
-pip install flax[all]
+pip install "flax[all]"
 ```
 
 ## What does Flax look like?
@@ -197,7 +197,7 @@ To cite this repository:
   author = {Jonathan Heek and Anselm Levskaya and Avital Oliver and Marvin Ritter and Bertrand Rondepierre and Andreas Steiner and Marc van {Z}ee},
   title = {{F}lax: A neural network library and ecosystem for {JAX}},
   url = {http://github.com/google/flax},
-  version = {0.7.4},
+  version = {0.7.5},
   year = {2023},
 }
 ```

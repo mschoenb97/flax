@@ -143,9 +143,9 @@ Learn more
    .. grid-item::
       :columns: 6 6 6 4
 
-      .. card:: :material-regular:`rocket_launch;2em` Getting started
+      .. card:: :material-regular:`rocket_launch;2em` Quickstart
          :class-card: sd-text-black sd-bg-light
-         :link: getting_started.html
+         :link: quick_start.html
 
    .. grid-item::
       :columns: 6 6 6 4
@@ -274,6 +274,18 @@ Notable examples in Flax include:
    .. grid-item::
       :columns: 6 6 6 4
 
+      .. card:: `MaxText <https://github.com/google/maxtext>`__
+         :class-card: sd-border-0
+         :shadow: none
+         :class-title: sd-text-center sd-fs-5
+
+         .. div:: sd-text-center sd-font-italic
+
+            Open source high performance LLM
+
+   .. grid-item::
+      :columns: 6 6 6 4
+
       .. card:: `T5x <https://github.com/google-research/t5x>`__
          :class-card: sd-border-0
          :shadow: none
@@ -281,7 +293,7 @@ Notable examples in Flax include:
 
          .. div:: sd-text-center sd-font-italic
 
-            Large Language Models
+            Large language models
 
    .. grid-item::
       :columns: 6 6 6 4
@@ -302,11 +314,14 @@ Notable examples in Flax include:
    :hidden:
    :maxdepth: 2
 
-   Quick start <getting_started>
+   Quick start <quick_start>
+   guides/flax_fundamentals/flax_basics
    guides/index
-   examples
+   examples/index
    glossary
+   faq
    developer_notes/index
    philosophy
    contributing
+   experimental
    api_reference/index

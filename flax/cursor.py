@@ -12,12 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
 import enum
-from typing import Any, Callable, Dict, Generator, Generic, Mapping, Optional, Protocol, Tuple, TypeVar, Union, runtime_checkable
+from typing import (
+  Any,
+  Callable,
+  Dict,
+  Generator,
+  Generic,
+  Mapping,
+  Optional,
+  Protocol,
+  TypeVar,
+  runtime_checkable,
+)
+
 from flax.core import FrozenDict
 from flax.errors import CursorFindError, TraverseTreeError
-import dataclasses
-
 
 A = TypeVar('A')
 Key = Any
@@ -25,7 +36,6 @@ Key = Any
 
 @runtime_checkable
 class Indexable(Protocol):
-
   def __getitem__(self, key) -> Any:
     ...
 
@@ -44,10 +54,10 @@ class ParentKey(Generic[A]):
 
 def is_named_tuple(obj):
   return (
-      isinstance(obj, tuple)
-      and hasattr(obj, '_fields')
-      and hasattr(obj, '_asdict')
-      and hasattr(obj, '_replace')
+    isinstance(obj, tuple)
+    and hasattr(obj, '_fields')
+    and hasattr(obj, '_asdict')
+    and hasattr(obj, '_replace')
   )
 
 
@@ -93,9 +103,7 @@ def _traverse_tree(path, obj, *, update_fn=None, cond_fn=None):
     access_type = AccessType.ITEM
   elif dataclasses.is_dataclass(obj):
     items = (
-        (f.name, getattr(obj, f.name))
-        for f in dataclasses.fields(obj)
-        if f.init
+      (f.name, getattr(obj, f.name)) for f in dataclasses.fields(obj) if f.init
     )
     access_type = AccessType.ATTR
   else:
@@ -104,12 +112,12 @@ def _traverse_tree(path, obj, *, update_fn=None, cond_fn=None):
   if update_fn:
     for key, value in items:
       yield from _traverse_tree(
-          path + ((key, access_type),), value, update_fn=update_fn
+        path + ((key, access_type),), value, update_fn=update_fn
       )
   else:
     for key, value in items:
       yield from _traverse_tree(
-          path + ((key, access_type),), value, cond_fn=cond_fn
+        path + ((key, access_type),), value, cond_fn=cond_fn
       )
 
 
@@ -170,7 +178,7 @@ class Cursor(Generic[A]):
       raise AttributeError(f'Attribute {name} not found in {self._obj}')
 
     child = Cursor(
-        getattr(self._obj, name), ParentKey(self, name, AccessType.ATTR)
+      getattr(self._obj, name), ParentKey(self, name, AccessType.ATTR)
     )
     self._changes[name] = child
     return child
@@ -190,21 +198,21 @@ class Cursor(Generic[A]):
 
     Example::
 
-      from flax.cursor import cursor
-      from flax.training import train_state
-      import optax
+      >>> from flax.cursor import cursor
+      >>> from flax.training import train_state
+      >>> import optax
 
-      dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
-      modified_dict_obj = cursor(dict_obj)['b'][0].set(10)
-      assert modified_dict_obj == {'a': 1, 'b': (10, 3), 'c': [4, 5]}
+      >>> dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
+      >>> modified_dict_obj = cursor(dict_obj)['b'][0].set(10)
+      >>> assert modified_dict_obj == {'a': 1, 'b': (10, 3), 'c': [4, 5]}
 
-      state = train_state.TrainState.create(
-          apply_fn=lambda x: x,
-          params=dict_obj,
-          tx=optax.adam(1e-3),
-      )
-      modified_state = cursor(state).params['b'][1].set(10)
-      assert modified_state.params == {'a': 1, 'b': (2, 10), 'c': [4, 5]}
+      >>> state = train_state.TrainState.create(
+      ...     apply_fn=lambda x: x,
+      ...     params=dict_obj,
+      ...     tx=optax.adam(1e-3),
+      ... )
+      >>> modified_state = cursor(state).params['b'][1].set(10)
+      >>> assert modified_state.params == {'a': 1, 'b': (2, 10), 'c': [4, 5]}
 
     Args:
       value: the value used to set an attribute, property, element or entry in the Cursor object
@@ -226,36 +234,36 @@ class Cursor(Generic[A]):
 
     Example::
 
-      from flax.cursor import cursor
-      from flax.training import train_state
-      import optax
+      >>> from flax.cursor import cursor
+      >>> from flax.training import train_state
+      >>> import optax
 
-      dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
-      c = cursor(dict_obj)
-      c['b'][0] = 10
-      c['a'] = (100, 200)
-      modified_dict_obj = c.build()
-      assert modified_dict_obj == {'a': (100, 200), 'b': (10, 3), 'c': [4, 5]}
+      >>> dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
+      >>> c = cursor(dict_obj)
+      >>> c['b'][0] = 10
+      >>> c['a'] = (100, 200)
+      >>> modified_dict_obj = c.build()
+      >>> assert modified_dict_obj == {'a': (100, 200), 'b': (10, 3), 'c': [4, 5]}
 
-      state = train_state.TrainState.create(
-          apply_fn=lambda x: x,
-          params=dict_obj,
-          tx=optax.adam(1e-3),
-      )
-      new_fn = lambda x: x + 1
-      c = cursor(state)
-      c.params['b'][1] = 10
-      c.apply_fn = new_fn
-      modified_state = c.build()
-      assert modified_state.params == {'a': 1, 'b': (2, 10), 'c': [4, 5]}
-      assert modified_state.apply_fn == new_fn
+      >>> state = train_state.TrainState.create(
+      ...     apply_fn=lambda x: x,
+      ...     params=dict_obj,
+      ...     tx=optax.adam(1e-3),
+      ... )
+      >>> new_fn = lambda x: x + 1
+      >>> c = cursor(state)
+      >>> c.params['b'][1] = 10
+      >>> c.apply_fn = new_fn
+      >>> modified_state = c.build()
+      >>> assert modified_state.params == {'a': 1, 'b': (2, 10), 'c': [4, 5]}
+      >>> assert modified_state.apply_fn == new_fn
 
     Returns:
       A copy of the original object with the accumulated changes.
     """
     changes = {
-        key: child.build() if isinstance(child, Cursor) else child
-        for key, child in self._changes.items()
+      key: child.build() if isinstance(child, Cursor) else child
+      for key, child in self._changes.items()
     }
     if isinstance(self._obj, FrozenDict):
       obj = self._obj.copy(changes)  # type: ignore
@@ -277,8 +285,8 @@ class Cursor(Generic[A]):
     return obj  # type: ignore
 
   def apply_update(
-      self,
-      update_fn: Callable[[str, Any], Any],
+    self,
+    update_fn: Callable[[str, Any], Any],
   ) -> 'Cursor[A]':
     """Traverse the Cursor object and record conditional changes recursively via an ``update_fn``.
     The changes are recorded in the Cursor object's ``._changes`` dictionary. To generate a copy
@@ -308,51 +316,50 @@ class Cursor(Generic[A]):
 
     Example::
 
-      import flax.linen as nn
-      from flax.cursor import cursor
-      import jax
-      import jax.numpy as jnp
+      >>> import flax.linen as nn
+      >>> from flax.cursor import cursor
+      >>> import jax, jax.numpy as jnp
 
-      class Model(nn.Module):
-        @nn.compact
-        def __call__(self, x):
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          return x
+      >>> class Model(nn.Module):
+      ...   @nn.compact
+      ...   def __call__(self, x):
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     return x
 
-      params = Model().init(jax.random.key(0), jnp.empty((1, 2)))['params']
+      >>> params = Model().init(jax.random.key(0), jnp.empty((1, 2)))['params']
 
-      def update_fn(path, value):
-        '''Multiply all dense kernel params by 2 and add 1.
-        Subtract the Dense_1 bias param by 1.'''
-        if 'kernel' in path:
-          return value * 2 + 1
-        elif 'Dense_1' in path and 'bias' in path:
-          return value - 1
-        return value
+      >>> def update_fn(path, value):
+      ...   '''Multiply all dense kernel params by 2 and add 1.
+      ...   Subtract the Dense_1 bias param by 1.'''
+      ...   if 'kernel' in path:
+      ...     return value * 2 + 1
+      ...   elif 'Dense_1' in path and 'bias' in path:
+      ...     return value - 1
+      ...   return value
 
-      c = cursor(params)
-      new_params = c.apply_update(update_fn).build()
-      for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
-        assert (new_params[layer]['kernel'] == 2 * params[layer]['kernel'] + 1).all()
-        if layer == 'Dense_1':
-          assert (new_params[layer]['bias'] == params[layer]['bias'] - 1).all()
-        else:
-          assert (new_params[layer]['bias'] == params[layer]['bias']).all()
+      >>> c = cursor(params)
+      >>> new_params = c.apply_update(update_fn).build()
+      >>> for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
+      ...   assert (new_params[layer]['kernel'] == 2 * params[layer]['kernel'] + 1).all()
+      ...   if layer == 'Dense_1':
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias'] - 1).all()
+      ...   else:
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias']).all()
 
-      assert jax.tree_util.tree_all(
-            jax.tree_util.tree_map(
-                lambda x, y: (x == y).all(),
-                params,
-                Model().init(jax.random.key(0), jnp.empty((1, 2)))[
-                    'params'
-                ],
-            )
-        ) # make sure original params are unchanged
+      >>> assert jax.tree_util.tree_all(
+      ...       jax.tree_util.tree_map(
+      ...           lambda x, y: (x == y).all(),
+      ...           params,
+      ...           Model().init(jax.random.key(0), jnp.empty((1, 2)))[
+      ...               'params'
+      ...           ],
+      ...       )
+      ...   ) # make sure original params are unchanged
 
     Args:
       update_fn: the function that will conditionally record changes to the Cursor object
@@ -399,59 +406,58 @@ class Cursor(Generic[A]):
 
     Example::
 
-      import flax.linen as nn
-      from flax.cursor import cursor
-      import jax
-      import jax.numpy as jnp
+      >>> import flax.linen as nn
+      >>> from flax.cursor import cursor
+      >>> import jax, jax.numpy as jnp
 
-      class Model(nn.Module):
-        @nn.compact
-        def __call__(self, x):
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          return x
+      >>> class Model(nn.Module):
+      ...   @nn.compact
+      ...   def __call__(self, x):
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     return x
 
-      params = Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))['params']
+      >>> params = Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))['params']
 
-      def cond_fn(path, value):
-        '''Find the second dense layer params.'''
-        return 'Dense_1' in path
+      >>> def cond_fn(path, value):
+      ...   '''Find the second dense layer params.'''
+      ...   return 'Dense_1' in path
 
-      new_params = cursor(params).find(cond_fn)['bias'].set(params['Dense_1']['bias'] + 1)
+      >>> new_params = cursor(params).find(cond_fn)['bias'].set(params['Dense_1']['bias'] + 1)
 
-      for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
-        if layer == 'Dense_1':
-          assert (new_params[layer]['bias'] == params[layer]['bias'] + 1).all()
-        else:
-          assert (new_params[layer]['bias'] == params[layer]['bias']).all()
+      >>> for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
+      ...   if layer == 'Dense_1':
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias'] + 1).all()
+      ...   else:
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias']).all()
 
-      c = cursor(params)
-      c2 = c.find(cond_fn)
-      c2['kernel'] += 2
-      c2['bias'] += 2
-      new_params = c.build()
+      >>> c = cursor(params)
+      >>> c2 = c.find(cond_fn)
+      >>> c2['kernel'] += 2
+      >>> c2['bias'] += 2
+      >>> new_params = c.build()
 
-      for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
-        if layer == 'Dense_1':
-          assert (new_params[layer]['kernel'] == params[layer]['kernel'] + 2).all()
-          assert (new_params[layer]['bias'] == params[layer]['bias'] + 2).all()
-        else:
-          assert (new_params[layer]['kernel'] == params[layer]['kernel']).all()
-          assert (new_params[layer]['bias'] == params[layer]['bias']).all()
+      >>> for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
+      ...   if layer == 'Dense_1':
+      ...     assert (new_params[layer]['kernel'] == params[layer]['kernel'] + 2).all()
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias'] + 2).all()
+      ...   else:
+      ...     assert (new_params[layer]['kernel'] == params[layer]['kernel']).all()
+      ...     assert (new_params[layer]['bias'] == params[layer]['bias']).all()
 
-      assert jax.tree_util.tree_all(
-            jax.tree_util.tree_map(
-                lambda x, y: (x == y).all(),
-                params,
-                Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))[
-                    'params'
-                ],
-            )
-        ) # make sure original params are unchanged
+      >>> assert jax.tree_util.tree_all(
+      ...       jax.tree_util.tree_map(
+      ...           lambda x, y: (x == y).all(),
+      ...           params,
+      ...           Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))[
+      ...               'params'
+      ...           ],
+      ...       )
+      ...   ) # make sure original params are unchanged
 
     Args:
       cond_fn: the function that will conditionally find child Cursor objects
@@ -470,7 +476,7 @@ class Cursor(Generic[A]):
       return cursor
 
   def find_all(
-      self, cond_fn: Callable[[str, Any], bool]
+    self, cond_fn: Callable[[str, Any], bool]
   ) -> Generator['Cursor[A]', None, None]:
     """Traverse the Cursor object and return a generator of child Cursor objects that fulfill the
     conditions in the ``cond_fn``. The ``cond_fn`` has a function signature of ``(str, Any) -> bool``:
@@ -489,45 +495,44 @@ class Cursor(Generic[A]):
 
     Example::
 
-      import flax.linen as nn
-      from flax.cursor import cursor
-      import jax
-      import jax.numpy as jnp
+      >>> import flax.linen as nn
+      >>> from flax.cursor import cursor
+      >>> import jax, jax.numpy as jnp
 
-      class Model(nn.Module):
-        @nn.compact
-        def __call__(self, x):
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          x = nn.Dense(3)(x)
-          x = nn.relu(x)
-          return x
+      >>> class Model(nn.Module):
+      ...   @nn.compact
+      ...   def __call__(self, x):
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     x = nn.Dense(3)(x)
+      ...     x = nn.relu(x)
+      ...     return x
 
-      params = Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))['params']
+      >>> params = Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))['params']
 
-      def cond_fn(path, value):
-        '''Find all dense layer params.'''
-        return 'Dense' in path
+      >>> def cond_fn(path, value):
+      ...   '''Find all dense layer params.'''
+      ...   return 'Dense' in path
 
-      c = cursor(params)
-      for dense_params in c.find_all(cond_fn):
-        dense_params['bias'] += 1
-      new_params = c.build()
+      >>> c = cursor(params)
+      >>> for dense_params in c.find_all(cond_fn):
+      ...   dense_params['bias'] += 1
+      >>> new_params = c.build()
 
-      for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
-        assert (new_params[layer]['bias'] == params[layer]['bias'] + 1).all()
+      >>> for layer in ('Dense_0', 'Dense_1', 'Dense_2'):
+      ...   assert (new_params[layer]['bias'] == params[layer]['bias'] + 1).all()
 
-      assert jax.tree_util.tree_all(
-            jax.tree_util.tree_map(
-                lambda x, y: (x == y).all(),
-                params,
-                Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))[
-                    'params'
-                ],
-            )
-        ) # make sure original params are unchanged
+      >>> assert jax.tree_util.tree_all(
+      ...       jax.tree_util.tree_map(
+      ...           lambda x, y: (x == y).all(),
+      ...           params,
+      ...           Model().init(jax.random.PRNGKey(0), jnp.empty((1, 2)))[
+      ...               'params'
+      ...           ],
+      ...       )
+      ...   ) # make sure original params are unchanged
 
     Args:
       cond_fn: the function that will conditionally find child Cursor objects
@@ -552,7 +557,7 @@ class Cursor(Generic[A]):
   def _pretty_repr(self, indent=2, _prefix_indent=0):
     s = 'Cursor(\n'
     obj_str = repr(self._obj).replace(
-        '\n', '\n' + ' ' * (_prefix_indent + indent)
+      '\n', '\n' + ' ' * (_prefix_indent + indent)
     )
     s += ' ' * (_prefix_indent + indent) + f'_obj={obj_str},\n'
     s += ' ' * (_prefix_indent + indent) + '_changes={'
@@ -562,14 +567,14 @@ class Cursor(Generic[A]):
         str_key = repr(key)
         prefix = ' ' * (_prefix_indent + 2 * indent) + str_key + ': '
         s += (
-            prefix
-            + self._changes[key]._pretty_repr(
-                indent=indent, _prefix_indent=len(prefix)
-            )
-            + ',\n'
+          prefix
+          + self._changes[key]._pretty_repr(
+            indent=indent, _prefix_indent=len(prefix)
+          )
+          + ',\n'
         )
       s = s[
-          :-2
+        :-2
       ]  # remove comma and newline character for last element in self._changes
       s += '\n' + ' ' * (_prefix_indent + indent) + '}\n'
     else:
@@ -585,8 +590,8 @@ class Cursor(Generic[A]):
       return (self[i] for i in range(len(self._obj)))
     else:
       raise NotImplementedError(
-          '__iter__ method only implemented for tuples and lists, not type'
-          f' {type(self._obj)}'
+        '__iter__ method only implemented for tuples and lists, not type'
+        f' {type(self._obj)}'
       )
 
   def __reversed__(self):
@@ -594,8 +599,8 @@ class Cursor(Generic[A]):
       return (self[i] for i in range(len(self._obj) - 1, -1, -1))
     else:
       raise NotImplementedError(
-          '__reversed__ method only implemented for tuples and lists, not type'
-          f' {type(self._obj)}'
+        '__reversed__ method only implemented for tuples and lists, not type'
+        f' {type(self._obj)}'
       )
 
   def __add__(self, other):
@@ -727,54 +732,54 @@ def cursor(obj: A) -> Cursor[A]:
 
   ``.set`` example::
 
-    from flax.cursor import cursor
+    >>> from flax.cursor import cursor
 
-    dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
-    modified_dict_obj = cursor(dict_obj)['b'][0].set(10)
-    assert modified_dict_obj == {'a': 1, 'b': (10, 3), 'c': [4, 5]}
+    >>> dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
+    >>> modified_dict_obj = cursor(dict_obj)['b'][0].set(10)
+    >>> assert modified_dict_obj == {'a': 1, 'b': (10, 3), 'c': [4, 5]}
 
   ``.build`` example::
 
-    from flax.cursor import cursor
+    >>> from flax.cursor import cursor
 
-    dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
-    c = cursor(dict_obj)
-    c['b'][0] = 10
-    c['a'] = (100, 200)
-    modified_dict_obj = c.build()
-    assert modified_dict_obj == {'a': (100, 200), 'b': (10, 3), 'c': [4, 5]}
+    >>> dict_obj = {'a': 1, 'b': (2, 3), 'c': [4, 5]}
+    >>> c = cursor(dict_obj)
+    >>> c['b'][0] = 10
+    >>> c['a'] = (100, 200)
+    >>> modified_dict_obj = c.build()
+    >>> assert modified_dict_obj == {'a': (100, 200), 'b': (10, 3), 'c': [4, 5]}
 
   ``.apply_update`` example::
 
-    from flax.cursor import cursor
-    from flax.training import train_state
-    import optax
+    >>> from flax.cursor import cursor
+    >>> from flax.training import train_state
+    >>> import optax
 
-    def update_fn(path, value):
-      '''Replace params with empty dictionary.'''
-      if 'params' in path:
-        return {}
-      return value
+    >>> def update_fn(path, value):
+    ...   '''Replace params with empty dictionary.'''
+    ...   if 'params' in path:
+    ...     return {}
+    ...   return value
 
-    state = train_state.TrainState.create(
-        apply_fn=lambda x: x,
-        params={'a': 1, 'b': 2},
-        tx=optax.adam(1e-3),
-    )
-    c = cursor(state)
-    state2 = c.apply_update(update_fn).build()
-    assert state2.params == {}
-    assert state.params == {'a': 1, 'b': 2} # make sure original params are unchanged
+    >>> state = train_state.TrainState.create(
+    ...     apply_fn=lambda x: x,
+    ...     params={'a': 1, 'b': 2},
+    ...     tx=optax.adam(1e-3),
+    ... )
+    >>> c = cursor(state)
+    >>> state2 = c.apply_update(update_fn).build()
+    >>> assert state2.params == {}
+    >>> assert state.params == {'a': 1, 'b': 2} # make sure original params are unchanged
 
   If the underlying ``obj`` is a ``list`` or ``tuple``, iterating over the Cursor object
   to get the child Cursors is also possible::
 
-    from flax.cursor import cursor
+    >>> from flax.cursor import cursor
 
-    c = cursor(((1, 2), (3, 4)))
-    for child_c in c:
-      child_c[1] *= -1
-    assert c.build() == ((1, -2), (3, -4))
+    >>> c = cursor(((1, 2), (3, 4)))
+    >>> for child_c in c:
+    ...   child_c[1] *= -1
+    >>> assert c.build() == ((1, -2), (3, -4))
 
   View the docstrings for each method to see more examples of their usage.
 

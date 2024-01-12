@@ -14,20 +14,17 @@
 
 """Tests for flax.training.early_stopping."""
 
-import copy
-import os
 
-from absl.testing import absltest
-from flax.training import early_stopping
 import jax
-from jax import test_util as jtu
+from absl.testing import absltest
+
+from flax.training import early_stopping
 
 # Parse absl flags test_srcdir and test_tmpdir.
 jax.config.parse_flags_with_absl()
 
 
 class EarlyStoppingTests(absltest.TestCase):
-
   def test_update(self):
     es = early_stopping.EarlyStopping(min_delta=0, patience=0)
 
@@ -35,8 +32,8 @@ class EarlyStoppingTests(absltest.TestCase):
       improve_steps = 0
       for step in range(10):
         metric = 1.0
-        did_improve, es = es.update(metric)
-        if not did_improve:
+        es = es.update(metric)
+        if not es.has_improved:
           improve_steps += 1
         if es.should_stop:
           break
@@ -51,7 +48,7 @@ class EarlyStoppingTests(absltest.TestCase):
     patient_es = early_stopping.EarlyStopping(min_delta=0, patience=6)
     for step in range(10):
       metric = 1.0
-      did_improve, es = es.update(metric)
+      es = es.update(metric)
       if es.should_stop:
         break
 
@@ -59,7 +56,7 @@ class EarlyStoppingTests(absltest.TestCase):
 
     for patient_step in range(10):
       metric = 1.0
-      did_improve, patient_es = patient_es.update(metric)
+      patient_es = patient_es.update(metric)
       if patient_es.should_stop:
         break
 
@@ -72,7 +69,7 @@ class EarlyStoppingTests(absltest.TestCase):
     metric = 1.0
     for step in range(100):
       metric -= 1e-4
-      did_improve, es = es.update(metric)
+      es = es.update(metric)
       if es.should_stop:
         break
 
@@ -81,29 +78,29 @@ class EarlyStoppingTests(absltest.TestCase):
     metric = 1.0
     for step in range(100):
       metric -= 1e-4
-      did_improve, delta_es = delta_es.update(metric)
+      delta_es = delta_es.update(metric)
       if delta_es.should_stop:
         break
 
     self.assertEqual(step, 1)
 
     metrics = [
-        0.01,
-        0.005,
-        0.0033,
-        0.0025,
-        0.002,
-        0.0017,
-        0.0014,
-        0.0012,
-        0.0011,
-        0.001,
+      0.01,
+      0.005,
+      0.0033,
+      0.0025,
+      0.002,
+      0.0017,
+      0.0014,
+      0.0012,
+      0.0011,
+      0.001,
     ]
     improvement_steps = 0
     for step in range(10):
       metric = metrics[step]
-      did_improve, delta_patient_es = delta_patient_es.update(metric)
-      if did_improve:
+      delta_patient_es = delta_patient_es.update(metric)
+      if delta_patient_es.has_improved:
         improvement_steps += 1
       if delta_patient_es.should_stop:
         break

@@ -18,23 +18,36 @@ A Traversal can be used to iterate and update complex data structures.
 Traversals take in an object and return a subset of its contents.
 For example, a Traversal could select an attribute of an object::
 
-  x = Foo(foo=1)
-  traverse_util.TraverseAttr('foo').iterate(x) # [1]
+  >>> from flax import traverse_util
+  >>> import dataclasses
 
+  >>> @dataclasses.dataclass
+  ... class Foo:
+  ...   foo: int = 0
+  ...   bar: int = 0
+  ...
+  >>> x = Foo(foo=1)
+  >>> iterator = traverse_util.TraverseAttr('foo').iterate(x)
+  >>> list(iterator)
+  [1]
 
 More complex traversals can be constructed using composition.
 It is often useful to start from the identity traversal and use a method chain
 to construct the intended Traversal::
 
-  data = [{'foo': 1, 'bar': 2}, {'foo': 3, 'bar': 4}]
-  traversal = traverse_util.t_identity.each()['foo']
-  traversal.iterate(data) # [1, 3]
+  >>> data = [{'foo': 1, 'bar': 2}, {'foo': 3, 'bar': 4}]
+  >>> traversal = traverse_util.t_identity.each()['foo']
+  >>> iterator = traversal.iterate(data)
+  >>> list(iterator)
+  [1, 3]
 
-Traversals can also be used to make changes using the `update` method::
+Traversals can also be used to make changes using the ``update`` method::
 
-  data = {'foo': Foo(bar=2)}
-  traversal = traverse_util.t_identity['foo'].bar
-  traversal.update(lambda x: x + x, data) # {'foo': Foo(bar=4)}
+  >>> data = {'foo': Foo(bar=2)}
+  >>> traversal = traverse_util.t_identity['foo'].bar
+  >>> data = traversal.update(lambda x: x + x, data)
+  >>> data
+  {'foo': Foo(foo=0, bar=4)}
 
 Traversals never mutate the original data. Therefore, an update essentially
 returns a copy of the data including the provided updates.
@@ -43,10 +56,11 @@ returns a copy of the data including the provided updates.
 import abc
 import copy
 import dataclasses
-from typing import Any, Callable, Dict, Tuple
 import warnings
+from typing import Any, Callable, Tuple
 
 import jax
+
 import flax
 from flax.core.scope import VariableDict
 
@@ -68,38 +82,37 @@ def flatten_dict(xs, keep_empty_nodes=False, is_leaf=None, sep=None):
   """Flatten a nested dictionary.
 
   The nested keys are flattened to a tuple.
-  See `unflatten_dict` on how to restore the
+  See ``unflatten_dict`` on how to restore the
   nested dictionary structure.
 
   Example::
 
-    xs = {'foo': 1, 'bar': {'a': 2, 'b': {}}}
-    flat_xs = flatten_dict(xs)
-    print(flat_xs)
-    # {
-    #   ('foo',): 1,
-    #   ('bar', 'a'): 2,
-    # }
+    >>> from flax.traverse_util import flatten_dict
+
+    >>> xs = {'foo': 1, 'bar': {'a': 2, 'b': {}}}
+    >>> flat_xs = flatten_dict(xs)
+    >>> flat_xs
+    {('foo',): 1, ('bar', 'a'): 2}
 
   Note that empty dictionaries are ignored and
-  will not be restored by `unflatten_dict`.
+  will not be restored by ``unflatten_dict``.
 
   Args:
     xs: a nested dictionary
     keep_empty_nodes: replaces empty dictionaries
-      with `traverse_util.empty_node`.
+      with ``traverse_util.empty_node``.
     is_leaf: an optional function that takes the
       next nested dictionary and nested keys and
       returns True if the nested dictionary is a
       leaf (i.e., should not be flattened further).
     sep: if specified, then the keys of the returned
-      dictionary will be `sep`-joined strings (if
-      `None`, then keys will be tuples).
+      dictionary will be ``sep``-joined strings (if
+      ``None``, then keys will be tuples).
   Returns:
     The flattened dictionary.
   """
   assert isinstance(
-      xs, (flax.core.FrozenDict, dict)
+    xs, (flax.core.FrozenDict, dict)
   ), f'expected (frozen)dict; got {type(xs)}'
 
   def _key(path):
@@ -109,7 +122,7 @@ def flatten_dict(xs, keep_empty_nodes=False, is_leaf=None, sep=None):
 
   def _flatten(xs, prefix):
     if not isinstance(xs, (flax.core.FrozenDict, dict)) or (
-        is_leaf and is_leaf(prefix, xs)
+      is_leaf and is_leaf(prefix, xs)
     ):
       return {_key(prefix): xs}
     result = {}
@@ -130,24 +143,21 @@ def flatten_dict(xs, keep_empty_nodes=False, is_leaf=None, sep=None):
 def unflatten_dict(xs, sep=None):
   """Unflatten a dictionary.
 
-  See `flatten_dict`
+  See ``flatten_dict``
 
   Example::
 
-    flat_xs = {
-      ('foo',): 1,
-      ('bar', 'a'): 2,
-    }
-    xs = unflatten_dict(flat_xs)
-    print(xs)
-    # {
-    #   'foo': 1
-    #   'bar': {'a': 2}
-    # }
+    >>> flat_xs = {
+    ...   ('foo',): 1,
+    ...   ('bar', 'a'): 2,
+    ... }
+    >>> xs = unflatten_dict(flat_xs)
+    >>> xs
+    {'foo': 1, 'bar': {'a': 2}}
 
   Args:
     xs: a flattened dictionary
-    sep: separator (same as used with `flatten_dict()`).
+    sep: separator (same as used with ``flatten_dict()``).
   Returns:
     The nested dictionary.
   """
@@ -168,7 +178,7 @@ def unflatten_dict(xs, sep=None):
 
 
 def path_aware_map(
-    f: Callable[[Path, Any], Any], nested_dict: VariableDict
+  f: Callable[[Path, Any], Any], nested_dict: VariableDict
 ) -> VariableDict:
   """A map function that operates over nested dictionary structures while taking
   the path to each leaf into account.
@@ -177,7 +187,7 @@ def path_aware_map(
 
     >>> import jax.numpy as jnp
     >>> from flax import traverse_util
-    ...
+
     >>> params = {'a': {'x': 10, 'y': 3}, 'b': {'x': 20}}
     >>> f = lambda path, x: x + 5 if 'x' in path else -x
     >>> traverse_util.path_aware_map(f, params)
@@ -193,7 +203,7 @@ def path_aware_map(
   """
   flat = flatten_dict(nested_dict, keep_empty_nodes=True)
   return unflatten_dict(
-      {k: f(k, v) if v is not empty_node else v for k, v in flat.items()}
+    {k: f(k, v) if v is not empty_node else v for k, v in flat.items()}
   )
 
 
@@ -203,11 +213,11 @@ class Traversal(abc.ABC):
   def __new__(cls, *args, **kwargs):
     # Must override __new__ instead of __init__ since this is an ABC
     warnings.warn(
-        '`flax.traverse_util.Traversal` will be deprecated. If you are using '
-        'it for `flax.optim`, use `optax` instead. Refer to the update guide '
-        'https://flax.readthedocs.io/en/latest/guides/optax_update_guide.html '
-        'for detailed instructions.',
-        DeprecationWarning,
+      '`flax.traverse_util.Traversal` will be deprecated. If you are using '
+      'it for `flax.optim`, use `optax` instead. Refer to the update guide '
+      'https://flax.readthedocs.io/en/latest/guides/converting_and_upgrading/optax_update_guide.html '
+      'for detailed instructions.',
+      DeprecationWarning,
     )
     return super().__new__(cls)
 
@@ -226,7 +236,7 @@ class Traversal(abc.ABC):
 
   @abc.abstractmethod
   def iterate(self, inputs):
-    """Iterate over the values selected by this `Traversal`.
+    """Iterate over the values selected by this ``Traversal``.
 
     Args:
       inputs: the object that should be traversed.
@@ -236,7 +246,7 @@ class Traversal(abc.ABC):
     pass
 
   def set(self, values, inputs):
-    """Overrides the values selected by the `Traversal`.
+    """Overrides the values selected by the ``Traversal``.
 
     Args:
       values: a list containing the new values.
@@ -389,8 +399,7 @@ class TraverseItem(Traversal):
       indices = set(range(*sl.indices(len(inputs))))
 
       args = [
-          fn(inputs[i]) if i in indices else inputs[i]
-          for i in range(len(inputs))
+        fn(inputs[i]) if i in indices else inputs[i] for i in range(len(inputs))
       ]
       if _is_namedtuple(ty):
         return ty(*args)
@@ -441,8 +450,8 @@ def _get_params_dict(inputs):
     return flax.core.unfreeze(inputs)
   else:
     raise ValueError(
-        'Can only traverse a flax Model instance or a nested dict, not '
-        f'{type(inputs)}'
+      'Can only traverse a flax Model instance or a nested dict, not '
+      f'{type(inputs)}'
     )
 
 
@@ -455,7 +464,7 @@ class ModelParamTraversal(Traversal):
   """Select model parameters using a name filter.
 
   This traversal operates on a nested dictionary of parameters and selects a
-  subset based on the `filter_fn` argument.
+  subset based on the ``filter_fn`` argument.
 
   See :class:`flax.optim.MultiOptimizer` for an example of how to use
   :class:`ModelParamTraversal` to update subsets of the parameter tree with a

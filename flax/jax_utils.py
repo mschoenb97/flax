@@ -15,17 +15,16 @@
 """Utilities we could consider upstreaming to Jax."""
 
 import collections
-from collections.abc import Iterable  # pylint: disable=g-importing-member
 import itertools
 import warnings
+from collections.abc import Iterable  # pylint: disable=g-importing-member
 
 import jax
-from jax import core
-from jax import lax
-from jax.extend import linear_util as lu
-from jax.interpreters import partial_eval as pe
 import jax.numpy as jnp
 import numpy as np
+from jax import core, lax
+from jax.extend import linear_util as lu
+from jax.interpreters import partial_eval as pe
 
 
 def _pmap_device_order():
@@ -38,7 +37,7 @@ def replicate(tree, devices=None):
   Args:
     tree: a pytree containing the arrays that should be replicated.
     devices: the devices the data is replicated to
-      (default: same order as expected by `jax.pmap()`).
+      (default: same order as expected by ``jax.pmap()``).
   Returns:
     A new pytree containing the replicated arrays.
   """
@@ -52,17 +51,17 @@ def unreplicate(tree):
 
 
 def pmean(xs, axis_name):
-  warnings.warn("use jax.lax.pmean instead", DeprecationWarning)
+  warnings.warn('use jax.lax.pmean instead', DeprecationWarning)
   return lax.pmean(xs, axis_name)
 
 
 def partial_eval_by_shape(fn, input_spec, *args, **kwargs):
   """Lazily evaluate a function by using the shapes of the inputs.
 
-  This function is similar to `jax.eval_shape` with the key difference that
+  This function is similar to ``jax.eval_shape`` with the key difference that
   function outputs that can be computed without a concrete value of the
   inputs are returned as is instead of only the shape. See for example
-  `module.init_by_shape` where this functionality is used to initialize a
+  ``module.init_by_shape`` where this functionality is used to initialize a
   model without using input data lr computation.
 
   Args:
@@ -82,13 +81,13 @@ def partial_eval_by_shape(fn, input_spec, *args, **kwargs):
   inputs_flat, in_tree = jax.tree_util.tree_flatten(input_structs)
   f_flat, out_tree = jax.api_util.flatten_fun_nokwargs(lu.wrap_init(f), in_tree)
   in_pvals = [
-      pe.PartialVal.unknown(core.ShapedArray(x.shape, x.dtype))
-      for x in inputs_flat
+    pe.PartialVal.unknown(core.ShapedArray(x.shape, x.dtype))
+    for x in inputs_flat
   ]
   _, out_pvals, _ = pe.trace_to_jaxpr_nounits(f_flat, in_pvals)
   out_flat = [
-      const if pv is None else jax.ShapeDtypeStruct(pv.shape, pv.dtype)
-      for pv, const in out_pvals
+    const if pv is None else jax.ShapeDtypeStruct(pv.shape, pv.dtype)
+    for pv, const in out_pvals
   ]
   return jax.tree_util.tree_unflatten(out_tree(), out_flat)
 
@@ -125,7 +124,7 @@ def prefetch_to_device(iterator, size, devices=None):
 
     devices: the list of devices to which the arrays should be prefetched.
 
-      Defaults to the order of devices expected by `jax.pmap`.
+      Defaults to the order of devices expected by ``jax.pmap``.
 
   Yields:
     The original items from the iterator where each ndarray is now sharded to
@@ -219,7 +218,7 @@ def scan_in_dim(body_fn, init, xs, axis=(0,), unroll=(1,), keepdims=False):
   def body_wrapper(c, xs):
     if keepdims:
       xs = jax.tree_util.tree_map(
-          lambda x: x.reshape((1,) * len(axis) + x.shape), xs
+        lambda x: x.reshape((1,) * len(axis) + x.shape), xs
       )
       xs = jax.tree_util.tree_map(transpose_out, xs)
     c, ys = body_fn(c, xs)
@@ -236,16 +235,16 @@ def scan_in_dim(body_fn, init, xs, axis=(0,), unroll=(1,), keepdims=False):
 
 # Copied from https://github.com/google-research/big_vision
 def pad_shard_unpad(
-    wrapped, static_argnums=(0,), static_argnames=(), static_return=False
+  wrapped, static_argnums=(0,), static_argnames=(), static_return=False
 ):
   """Wraps a function with code that pads, shards, then un-shards, un-pads.
 
   Args:
-    wrapped: the function to be wrapped. Signature is `params, *args, *kwargs`.
-    static_argnums: indices of arguments to `wrapped` that should _not_ be
+    wrapped: the function to be wrapped. Signature is ``params, *args, *kwargs``.
+    static_argnums: indices of arguments to ``wrapped`` that should _not_ be
       padded and sharded, but instead be forwarded as-is. The default is (0,)
-      because by far the most common use-case is to pass `params` first.
-    static_argnames: names of kwargs to `wrapped` that should _not_ be padded
+      because by far the most common use-case is to pass ``params`` first.
+    static_argnames: names of kwargs to ``wrapped`` that should _not_ be padded
       and sharded, but instead be forwarded as-is.
     static_return: whether not to un-shard, and un-pad the return value; static
       return values are typically used with eval steps that compute metrics
@@ -265,11 +264,11 @@ def pad_shard_unpad(
     the values returned by the function are transferred back to host memory.
 
     The returned function is augmented with a new keyword-only argument
-    `min_device_batch` that, if specified, forces padding inputs to at least
+    ``min_device_batch`` that, if specified, forces padding inputs to at least
     this size per device. This can be useful to avoid recompiles for the last
     batch and reduce memory fragmentation.
 
-    For more information refer to https://flax.readthedocs.io/en/latest/guides/full_eval.html
+    For more information refer to https://flax.readthedocs.io/en/latest/guides/data_preprocessing/full_eval.html
   """
 
   def pad_shard_unpad_wrapper(*args, min_device_batch=None, **kw):
@@ -281,7 +280,7 @@ def pad_shard_unpad(
     for k, v in kw.items():
       if k not in static_argnames:
         batch_sizes |= {t.shape[0] for t in jax.tree_util.tree_leaves(v)}
-    assert len(batch_sizes) == 1, f"Inconsistent batch-sizes: {batch_sizes}"
+    assert len(batch_sizes) == 1, f'Inconsistent batch-sizes: {batch_sizes}'
     b = batch_sizes.pop()
 
     def pad(x):
@@ -292,7 +291,7 @@ def pad_shard_unpad(
         db += 1
       if min_device_batch and db < min_device_batch:
         x = np.concatenate(
-            [x, np.zeros((d * (min_device_batch - db), *shape), x.dtype)]
+          [x, np.zeros((d * (min_device_batch - db), *shape), x.dtype)]
         )
         db = min_device_batch
       return x.reshape(d, db, *shape)

@@ -37,7 +37,6 @@ sys.path.insert(0, os.path.abspath('..'))
 sys.path.append(os.path.abspath('./_ext'))
 
 # patch sphinx
-import docs.conf_sphinx_patch
 # -- Project information -----------------------------------------------------
 
 project = 'Flax'
@@ -51,18 +50,18 @@ author = 'The Flax authors'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.autosectionlabel',
-    'sphinx.ext.doctest',
-    'sphinx.ext.intersphinx',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.viewcode',
-    'myst_nb',
-    'codediff',
-    'flax_module',
-    'sphinx_design',
+  'sphinx.ext.autodoc',
+  'sphinx.ext.autosummary',
+  'sphinx.ext.autosectionlabel',
+  'sphinx.ext.doctest',
+  'sphinx.ext.intersphinx',
+  'sphinx.ext.mathjax',
+  'sphinx.ext.napoleon',
+  'sphinx.ext.viewcode',
+  'myst_nb',
+  'codediff',
+  'flax_module',
+  'sphinx_design',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -110,30 +109,31 @@ html_title = ''
 html_static_path = ['_static']
 
 html_theme_options = {
-    'repository_url': 'https://github.com/google/flax',
-    'use_repository_button': True,  # add a 'link to repository' button
-    'use_issues_button': False,  # add an 'Open an Issue' button
-    'path_to_docs': (
-        'docs'
-    ),  # used to compute the path to launch notebooks in colab
-    'launch_buttons': {
-        'colab_url': 'https://colab.research.google.com/',
-    },
-    'prev_next_buttons_location': None,
-    'show_navbar_depth': 1,
+  'repository_url': 'https://github.com/google/flax',
+  'use_repository_button': True,  # add a 'link to repository' button
+  'use_issues_button': False,  # add an 'Open an Issue' button
+  'path_to_docs': (
+    'docs'
+  ),  # used to compute the path to launch notebooks in colab
+  'launch_buttons': {
+    'colab_url': 'https://colab.research.google.com/',
+  },
+  'prev_next_buttons_location': None,
+  'show_navbar_depth': 1,
 }
 
 # -- Options for myst ----------------------------------------------
 # uncomment line below to avoid running notebooks during development
-# nb_execution_mode = 'off'
+nb_execution_mode = 'off'
 # Notebook cell execution timeout; defaults to 30.
 nb_execution_timeout = 100
 # List of patterns, relative to source directory, that match notebook
 # files that will not be executed.
 myst_enable_extensions = ['dollarmath']
 nb_execution_excludepatterns = [
-    'getting_started.ipynb',  # <-- times out
-    'optax_update_guide.ipynb',  # <-- requires flax<=0.5.3
+  'quick_start.ipynb',  # <-- times out
+  'transfer_learning.ipynb',  # <-- transformers requires flax<=0.7.0
+  'flax/experimental/nnx',  # exclude nnx
 ]
 # raise exceptions on execution so CI can catch errors
 nb_execution_allow_errors = False
