@@ -36,7 +36,7 @@ def train_model(config):
 
   res = {}
   
-  state = train_and_evaluate(config, '/tmp')
+  state = train_and_evaluate(config, '/tmp/mnist')
 
   cleaned_change_points = {}
 

@@ -178,17 +178,20 @@ def get_optimizer_from_config(config):
     Returns:
         An optax optimizer.
     """
-    optimizer_type = config.get('optimizer_type')
-    momentum = config.get('momentum', 0.9)  # Default momentum
-    initial_lr = config.get('initial_learning_rate', 0.001)  # Default learning rate
-    lr_warmup_target = config.get('warmup_target', initial_lr)
-    warmup_steps = config.get('warmup_steps', 0)
-    decay_steps = config.get('decay_steps', 1000)
+
+    # return optax.sgd(config.warmup_target, 0.9)
+    # Accessing elements directly to ensure they are provided in the config
+    optimizer_type = config['optimizer_type']
+    momentum = config.get('momentum', 0.9)
+    initial_lr = config['initial_learning_rate']
+    lr_warmup_target = config['warmup_target']
+    warmup_steps = config['warmup_steps']
+    decay_steps = config['decay_steps']
 
     # Learning rate schedule
     lr_schedule = optax.join_schedules(
         schedules=[
-            optax.linear_schedule(init_value=0.0, end_value=lr_warmup_target, transition_steps=warmup_steps),
+            optax.linear_schedule(init_value=initial_lr, end_value=lr_warmup_target, transition_steps=warmup_steps),
             optax.cosine_decay_schedule(init_value=lr_warmup_target, decay_steps=decay_steps)
         ],
         boundaries=[warmup_steps]
@@ -196,9 +199,10 @@ def get_optimizer_from_config(config):
 
     # Selecting the optimizer
     if optimizer_type == 'sgd':
-        return optax.chain(optax.trace(decay=momentum, nesterov=False), optax.scale_by_schedule(lr_schedule))
+        # return optax.chain(optax.trace(decay=momentum, nesterov=False), optax.scale_by_schedule(lr_schedule))
+        return optax.sgd(learning_rate=lr_schedule, momentum=momentum)
     elif optimizer_type == 'adam':
-        return optax.chain(optax.adam(learning_rate=lr_schedule, b2=0.95))
+        return optax.adam(learning_rate=lr_schedule, b2=0.95)
     else:
         raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
 
@@ -466,23 +470,25 @@ class CustomTrainState(struct.PyTreeNode):
   def update_change_points(self):
     """Call this after gradient updates have been applied"""
 
-    partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
-    partial_get_change_points = partial(get_change_point_data, step=self.step)
+    return self
 
-    new_quantized = tree_map_with_path(partial_get_quantized, self.params)
-    points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
-    change_points = tree_map_with_path(
-      partial_get_change_points, points_changed, new_quantized)
+    # partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
+    # partial_get_change_points = partial(get_change_point_data, step=self.step)
+
+    # new_quantized = tree_map_with_path(partial_get_quantized, self.params)
+    # points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
+    # change_points = tree_map_with_path(
+    #   partial_get_change_points, points_changed, new_quantized)
   
-    new_change_points = tree_map_with_path(conv_append, self.change_points, change_points)
+    # new_change_points = tree_map_with_pgath(conv_append, self.change_points, change_points)
 
-    # if new_change_points['Conv_0']['bias'].size > 0:
-      # import pdb; pdb.set_trace()
+    # # if new_change_points['Conv_0']['bias'].size > 0:
+    #   # import pdb; pdb.set_trace()
 
-    return self.replace(
-      last_quantized=new_quantized,
-      change_points=new_change_points,
-    )
+    # return self.replace(
+    #   last_quantized=new_quantized,
+    #   change_points=new_change_points,
+    # )
 
   def get_distance_traveled(self):
 
