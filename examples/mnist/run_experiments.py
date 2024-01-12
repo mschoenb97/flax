@@ -430,32 +430,45 @@ def get_change_point_results(change_point_res, quantizer_warp_data):
   return res
 
 
+def sum_tree_leaves(tree):
+    leaves = tree_util.tree_leaves(tree)
+    return sum(leaf for leaf in leaves if leaf is not None)
+
 def compute_distance_metric(
-  qstored_weights, istored_weights, istored_distances, initializer, quantizer):
+    qstored_weights, istored_weights, istored_distances, initializer, quantizer):
 
-  assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
+    assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
 
-  distances = {}
-  quantized_agreements = {}
+    @matts_imports.conv_path_only()
+    def compute_total_sum(qstored_weight, istored_weight):
+      max_val = matts_imports.get_he_uniform_max_val(qstored_weight.shape)
+      return jnp.sum(jnp.abs(initializer.remap(qstored_weight) - istored_weight) / max_val)
 
-  for key in qstored_weights:
-    total_sum = 0.0
-    total_weights = 0
-    total_qweight_agreements = 0
-    for qstored_weight, istored_weight in zip(qstored_weights[key], istored_weights[key]):
-      max_val = get_he_uniform_max_val(qstored_weight.shape)
-      _ = initializer(qstored_weight.shape)
-      total_sum += tf.math.reduce_sum(
-          tf.abs(initializer.remap(qstored_weight) - istored_weight) / max_val)
-      quantizer.set_shape(qstored_weight.shape)
-      total_weights += qstored_weight.size
-      total_qweight_agreements += tf.math.reduce_sum(
-        tf.keras.backend.cast_to_floatx(quantizer(qstored_weight) == quantizer(istored_weight)))
+    @matts_imports.conv_path_only()
+    def compute_total_weights(qstored_weight):
+      return qstored_weight.size
+    
+    @matts_imports.conv_path_only()
+    def compute_total_qweight_agreements(qstored_weight, istored_weight):
+      return jnp.sum(jnp.array(quantizer(qstored_weight) == quantizer(istored_weight), dtype=jnp.float32))
 
-    distances[key] = (total_sum / istored_distances[key]).numpy()
-    quantized_agreements[key] = (total_qweight_agreements / total_weights).numpy()
+    # Process the results to get distances and quantized_agreements
+    distances = {}
+    quantized_agreements = {}
+    for key in istored_distances.keys():
 
-  return distances, quantized_agreements
+        total_sum = tree_util.tree_map_with_path(
+          compute_total_sum, qstored_weights[key], istored_weights[key])
+        total_weights = tree_util.tree_map_with_path(
+          compute_total_weights, qstored_weights[key])
+        total_qweight_agreements = tree_util.tree_map_with_path(
+          compute_total_qweight_agreements, qstored_weights[key], istored_weights[key])
+
+        distances[key] = (sum_tree_leaves(total_sum) / istored_distances[key]).item()
+        quantized_agreements[key] = (sum_tree_leaves(total_qweight_agreements) / 
+                                     sum_tree_leaves(total_weights)).item()
+
+    return distances, quantized_agreements
 
 
 def get_initializer(identifier_kwargs):
