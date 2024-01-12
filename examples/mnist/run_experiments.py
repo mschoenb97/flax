@@ -20,15 +20,19 @@ import argparse
 import importlib.util
 from jax import tree_util
 from jaxlib.xla_extension import ArrayImpl
+from pprint import pprint
 
 import jax.numpy as jnp
 
 from train import train_and_evaluate
 import matts_imports
 
-NUM_SAMPLES = 2 * 1280 #update this
+# NUM_SAMPLES = 2 * 1280 #update this
+NUM_SAMPLES = 60000
 
 def train_model(config):
+
+  pprint(config)
 
   res = {}
   
@@ -76,7 +80,8 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.decay_steps = decay_steps
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
-  config.test = True # TODO: delete this
+  # config.test = True # TODO: delete this
+  config.test = False # TODO: delete this
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
