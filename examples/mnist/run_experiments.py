@@ -64,7 +64,8 @@ def train_model(config):
 def train_corresponding_models(*, epochs, optimizer, binary,
                                k, bits, steps_per_epoch, initial_learning_rate, 
                                warmup_target, warmup_steps,
-                               decay_steps, warp_initialize):
+                               decay_steps, warp_initialize, get_change_point_stats,
+                               epochs_interval):
   """Get histories for both the Standard initializer with the tanh gradient and
   the warped initializer with the STE gradient"""
 
@@ -80,6 +81,8 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.decay_steps = decay_steps
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
+  config.get_change_point_stats = get_change_point_stats
+  config.epochs_interval = epochs_interval
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
@@ -563,20 +566,19 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
 
   res = {}
 
-  if config['get_change_point_stats']:
-    if cache_data:
-      actual_args = [
-          quantizer_warp_data['change_points'],
-          initializer_warp_data['change_points']
-      ]
-      actual_kwargs = {}
-      change_point_res = save_or_load_output(
-          compare_change_point_data, **identifier_kwargs, actual_args=actual_args,
-          actual_kwargs=actual_kwargs, path=path
-      )
-    else:
-      change_point_res = compare_change_point_data(
-          quantizer_warp_data, initializer_warp_data)
+  if cache_data:
+    actual_args = [
+        quantizer_warp_data['change_points'],
+        initializer_warp_data['change_points']
+    ]
+    actual_kwargs = {}
+    change_point_res = save_or_load_output(
+        compare_change_point_data, **identifier_kwargs, actual_args=actual_args,
+        actual_kwargs=actual_kwargs, path=path
+    )
+  else:
+    change_point_res = compare_change_point_data(
+        quantizer_warp_data, initializer_warp_data)
 
     change_point_results = get_change_point_results(
         change_point_res, quantizer_warp_data)
@@ -652,6 +654,8 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
       'decay_steps': config['steps_per_epoch'] * (1 - config['warmup_proportion']) * epochs,
       'optimizer': optimizer,
       'warp_initialize': warp_initialize,
+      'get_change_point_stats': config['get_change_point_stats'],
+      'epochs_interval': config['epochs_interval'],
       # 'weight_decay': weight_decay,
   }
 

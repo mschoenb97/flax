@@ -20,5 +20,7 @@ config = {
     'lr_jitter_scale': 0.01,
     'cache_data': True,
     'get_change_point_stats': True,
-    'path': 'results'
+    'path': 'results',
+    'get_change_point_stats': False,
+    'epochs_interval': 1,
 }

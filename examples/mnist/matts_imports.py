@@ -413,6 +413,9 @@ class CustomTrainState(struct.PyTreeNode):
 
   # Original train_state fields
   step: int
+  epochs_interval: int
+  get_change_point_stats: bool
+  
   apply_fn: Callable = struct.field(pytree_node=False)
   params: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   prev_params: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
@@ -439,9 +442,9 @@ class CustomTrainState(struct.PyTreeNode):
 
     new_epoch = self.epoch + 1
     if (new_epoch) % self.epochs_interval == 0:
-      self.stored_weights[new_epoch] = tree_map_with_path(conv_only, self.params)
+      self.stored_weights[int(new_epoch)] = tree_map_with_path(conv_only, self.params)
       # Store the current distance_traveled
-      self.stored_distances[new_epoch] = self.distance_traveled
+      self.stored_distances[int(new_epoch)] = self.distance_traveled
 
     return self.replace(epoch=self.epoch + 1)
   
@@ -470,25 +473,26 @@ class CustomTrainState(struct.PyTreeNode):
   def update_change_points(self):
     """Call this after gradient updates have been applied"""
 
-    return self
+    if not self.get_change_point_stats:
+      return self
 
-    # partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
-    # partial_get_change_points = partial(get_change_point_data, step=self.step)
+    partial_get_quantized = partial(get_quantized, quantizer=self.quantizer.__call__)
+    partial_get_change_points = partial(get_change_point_data, step=self.step)
 
-    # new_quantized = tree_map_with_path(partial_get_quantized, self.params)
-    # points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
-    # change_points = tree_map_with_path(
-    #   partial_get_change_points, points_changed, new_quantized)
+    new_quantized = tree_map_with_path(partial_get_quantized, self.params)
+    points_changed = tree_map_with_path(get_points_changed_tensor, new_quantized, self.last_quantized)
+    change_points = tree_map_with_path(
+      partial_get_change_points, points_changed, new_quantized)
   
-    # new_change_points = tree_map_with_pgath(conv_append, self.change_points, change_points)
+    new_change_points = tree_map_with_path(conv_append, self.change_points, change_points)
 
-    # # if new_change_points['Conv_0']['bias'].size > 0:
-    #   # import pdb; pdb.set_trace()
+    # if new_change_points['Conv_0']['bias'].size > 0:
+      # import pdb; pdb.set_trace()
 
-    # return self.replace(
-    #   last_quantized=new_quantized,
-    #   change_points=new_change_points,
-    # )
+    return self.replace(
+      last_quantized=new_quantized,
+      change_points=new_change_points,
+    )
 
   def get_distance_traveled(self):
 
@@ -539,7 +543,7 @@ class CustomTrainState(struct.PyTreeNode):
     return self_with_distance.update_change_points()
 
   @classmethod
-  def create(cls, *, apply_fn, params, tx, quantizer, epochs_interval, **kwargs):
+  def create(cls, *, apply_fn, params, tx, quantizer, config, **kwargs):
     """Creates a new instance with `step=0` and initialized `opt_state`."""
     opt_state = tx.init(params)
 
@@ -547,6 +551,9 @@ class CustomTrainState(struct.PyTreeNode):
     partial_get_change_points = partial(get_change_point_data, step=0)
     ones = tree_map_with_path(conv_ones, params)
     quantized_params = tree_map_with_path(partial_get_quantized, params)
+    epochs_interval = config.epochs_interval
+    get_change_point_stats = config.get_change_point_stats
+
 
     return cls(
         step=0,
@@ -559,6 +566,7 @@ class CustomTrainState(struct.PyTreeNode):
         last_quantized=quantized_params,
         change_points=tree_map_with_path(partial_get_change_points, ones, quantized_params),
         epochs_interval=epochs_interval,
+        get_change_point_stats=get_change_point_stats,
         **kwargs,
     )
 

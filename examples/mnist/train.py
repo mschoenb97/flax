@@ -127,7 +127,7 @@ def create_train_state(rng, config):
   cnn = CNN(quantizer=quantizer, kernel_init=initializer)
   params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
   return matts_imports.CustomTrainState.create(apply_fn=cnn.apply, params=params, tx=tx, 
-                                 quantizer=quantizer, epochs_interval=10)
+                                 quantizer=quantizer, config=config)
 
 
 def train_and_evaluate(
