@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import flax
+from flax.training import dynamic_scale as dynamic_scale_lib
 from flax import core, struct
 from flax.struct import dataclass
 from flax.training import train_state
@@ -436,7 +437,8 @@ class CustomTrainState(struct.PyTreeNode):
   final_logits: Optional[Array] = None
   correct_output_values: Optional[Array] = None
   initial_weights: Optional[Array] = None
-
+  batch_stats: Optional[Any] = None
+  dynamic_scale: Optional[dynamic_scale_lib.DynamicScale] = None
 
   def apply_epoch_updates(self):
 

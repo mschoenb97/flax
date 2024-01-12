@@ -148,7 +148,7 @@ def train_step(state, batch, learning_rate_fn):
   metrics = compute_metrics(logits, batch['label'])
   metrics['learning_rate'] = lr
 
-  new_state = state.apply_gradients(
+  new_state = state.apply_batch_updates(
       grads=grads, batch_stats=new_model_state['batch_stats']
   )
   if dynamic_scale:
@@ -256,20 +256,23 @@ def create_train_state(
     dynamic_scale = None
 
   params, batch_stats = initialized(rng, image_size, model)
+  quantizer = matts_imports.get_quantizer_from_config(config)
   tx = matts_imports.get_optimizer_from_config(config)
-  state = TrainState.create(
+  state = matts_imports.CustomTrainState.create(
       apply_fn=model.apply,
       params=params,
       tx=tx,
       batch_stats=batch_stats,
       dynamic_scale=dynamic_scale,
+      quantizer=quantizer,
+      config=config,
   )
   return state
 
 
 def train_and_evaluate(
     config: ml_collections.ConfigDict, workdir: str
-) -> TrainState:
+) -> matts_imports.CustomTrainState:
   """Execute model training and evaluation loop.
 
   Args:
@@ -425,7 +428,15 @@ def train_and_evaluate(
     if (step + 1) % steps_per_checkpoint == 0 or step + 1 == num_steps:
       state = sync_batch_stats(state)
       save_checkpoint(state, workdir)
-
+    state = state.apply_epoch_updates()
+    state.update_history(
+      summary['train_loss'], 
+      summary['loss'], 
+      summary['train_accuracy'], 
+      summary['test_accuracy'],
+    )
+  # May be worth trying to do this on the whole eval set
+  state = state.add_final_logits(next(eval_iter))
   # Wait until computations are done before exiting
   jax.random.normal(jax.random.key(0), ()).block_until_ready()
 
