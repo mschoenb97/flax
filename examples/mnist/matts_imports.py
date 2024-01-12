@@ -325,7 +325,7 @@ def conv_path_only(jit_compile=True, default_return=None):
       func = jax.jit(func)
     @wraps(func)
     def wrapper(path, *args, **kwargs):
-      if 'Conv' in path[0].key:
+      if ('Conv' in path[0].key) and ('bias' not in path[1].key):
         return func(*args, **kwargs)
       else:
         return default_return
@@ -415,7 +415,7 @@ class CustomTrainState(struct.PyTreeNode):
   step: int
   epochs_interval: int
   get_change_point_stats: bool
-  
+
   apply_fn: Callable = struct.field(pytree_node=False)
   params: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   prev_params: core.FrozenDict[str, Any] = struct.field(pytree_node=True)

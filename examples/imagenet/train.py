@@ -42,6 +42,7 @@ import tensorflow_datasets as tfds
 import input_pipeline
 import models
 
+import matts_imports
 
 NUM_CLASSES = 1000
 
@@ -255,11 +256,7 @@ def create_train_state(
     dynamic_scale = None
 
   params, batch_stats = initialized(rng, image_size, model)
-  tx = optax.sgd(
-      learning_rate=learning_rate_fn,
-      momentum=config.momentum,
-      nesterov=True,
-  )
+  tx = matts_imports.get_optimizer_from_config(config)
   state = TrainState.create(
       apply_fn=model.apply,
       params=params,
@@ -349,8 +346,12 @@ def train_and_evaluate(
   base_learning_rate = config.learning_rate * config.batch_size / 256.0
 
   model_cls = getattr(models, config.model)
+
+  quantizer = matts_imports.get_quantizer_from_config(config)
+  initializer = matts_imports.get_initializer_from_config(config)
   model = create_model(
-      model_cls=model_cls, half_precision=config.half_precision
+      model_cls=model_cls, half_precision=config.half_precision,
+      quantizer=quantizer, kernel_init=initializer,
   )
 
   learning_rate_fn = create_learning_rate_fn(

@@ -1,6 +1,6 @@
 config = {
-    'sgd_lr': 0.001,
-    'sgd_epochs': 10,
+    'sgd_lr': 0.000001,
+    'sgd_epochs': 5,
     # 'sgd_epochs': 2,
     'adam_lr': 0.0001,
     'adam_epochs': 10,

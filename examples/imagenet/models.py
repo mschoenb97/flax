@@ -18,10 +18,11 @@
 # pytype: disable=wrong-arg-count
 
 from functools import partial
-from typing import Any, Callable, Sequence, Tuple
+from typing import Any, Callable, Sequence, Tuple, Optional
 
 from flax import linen as nn
 import jax.numpy as jnp
+from jax.random import PRNGKey
 
 ModuleDef = Any
 
@@ -96,10 +97,14 @@ class ResNet(nn.Module):
   dtype: Any = jnp.float32
   act: Callable = nn.relu
   conv: ModuleDef = nn.Conv
+  quantizer: Optional[Callable[[Any], Any]] = None
+  kernel_init: Optional[Callable[[PRNGKey, Tuple[int, ...], Any], Any]] = None
+
 
   @nn.compact
   def __call__(self, x, train: bool = True):
-    conv = partial(self.conv, use_bias=False, dtype=self.dtype)
+    conv = partial(self.conv, use_bias=False, dtype=self.dtype, quantizer=self.quantizer, 
+                   kernel_init=self.kernel_init)
     norm = partial(
         nn.BatchNorm,
         use_running_average=not train,

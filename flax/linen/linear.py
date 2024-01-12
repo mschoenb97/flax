@@ -543,8 +543,6 @@ class _Conv(Module):
         bias_shape = conv_output_shape[1:]
 
       bias = self.param('bias', self.bias_init, bias_shape, self.param_dtype)
-      if self.quantizer is not None:
-        bias = self.quantizer(bias)
     else:
       bias = None
 

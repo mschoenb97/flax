@@ -151,7 +151,7 @@ def train_and_evaluate(
   rng, init_rng = jax.random.split(rng)
   state = create_train_state(init_rng, config)
 
-  for epoch in tqdm(range(1, config.num_epochs + 1)):
+  for epoch in range(1, config.num_epochs + 1):
     rng, input_rng = jax.random.split(rng)
     state, train_loss, train_accuracy = train_epoch(
         state, train_ds, config.batch_size, input_rng
