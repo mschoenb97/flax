@@ -83,7 +83,7 @@ class ste_initializer:
   def __call__(self, key: KeyArray,
                 shape: jax_core.Shape,
                 dtype: DTypeLikeInexact = jnp.float_):
-
+    
     return self.init_func(key, shape, dtype)
 
 class dsq_multi_bit_initializer:
@@ -114,9 +114,7 @@ class dsq_multi_bit_initializer:
 
     return self.delta(max_val) / self.interval_integral(max_val)
 
-  def remap(self, x):
-
-    max_val = get_he_uniform_max_val(x.shape)
+  def remap_with_max_val(self, x, max_val):
 
     i = jnp.floor((x + max_val) / self.delta(max_val))
 
@@ -136,10 +134,16 @@ class dsq_multi_bit_initializer:
 
     return remap_val
 
+  def remap(self, x):
+
+    max_val = get_he_uniform_max_val(x.shape)
+
+    return self.remap_with_max_val(x, max_val)
+
   def __call__(self, key: KeyArray,
                 shape: jax_core.Shape,
                 dtype: DTypeLikeInexact = jnp.float_):
-
+    
     return self.remap(self.init_func(key, shape, dtype))
   
 def get_initializer_from_config(config):
@@ -210,6 +214,7 @@ def get_optimizer_from_config(config):
 
 # Quantizers
 
+
 @dataclass
 class pwl_multi_bit_quantizer:
   """Pwl quantizer to match the behavior of the dsq quantizer"""
@@ -242,9 +247,7 @@ class pwl_multi_bit_quantizer:
     else:
       return 1.0
 
-  def __call__(self, x):
-
-    max_val = get_he_uniform_max_val(x.shape)
+  def call_with_max_val(self, x, max_val):
 
     quantized_estimate = self.lr_adjustment(max_val) * jnp.clip(x, -max_val, max_val)
 
@@ -252,6 +255,13 @@ class pwl_multi_bit_quantizer:
     quantized = self.delta(max_val) * jnp.round((clipped + max_val) / self.delta(max_val)) - max_val
 
     return quantized_estimate + lax.stop_gradient(quantized - quantized_estimate)
+
+
+  def __call__(self, x):
+
+    max_val = get_he_uniform_max_val(x.shape)
+
+    return self.call_with_max_val(x, max_val)
 
 @dataclass
 class dsq_multi_bit_quantizer:
@@ -271,9 +281,7 @@ class dsq_multi_bit_quantizer:
   def k_norm(self, max_val):
     return self.k / max_val
 
-  def __call__(self, x):
-
-    max_val = get_he_uniform_max_val(x.shape)
+  def call_with_max_val(self, x, max_val):
 
     delta = (2.0 * max_val) / (2.0 ** self.bits - 1)
 
@@ -292,7 +300,13 @@ class dsq_multi_bit_quantizer:
     quantized = delta * jnp.round((clipped + max_val) / delta) - max_val
 
     return quantized_estimate + lax.stop_gradient(quantized - quantized_estimate)
-  
+
+  def __call__(self, x):
+
+    max_val = get_he_uniform_max_val(x.shape)
+
+    return self.call_with_max_val(x, max_val)
+
 
 def get_quantizer_from_config(config):
   """
@@ -572,3 +586,74 @@ class CustomTrainState(struct.PyTreeNode):
         **kwargs,
     )
 
+if __name__ == '__main__':
+
+  def test_quantizer_and_initializer(quantizer, initializer, key, shape, adjust_learning_rate, *args):
+    key, subkey = random.split(key)
+    initializer = initializer(*args)
+    # Call initializer to set the shape
+
+    max_val = get_he_uniform_max_val(shape)
+
+    quantizer = quantizer(*args)
+
+    lr_adjustment = 1.0
+    if adjust_learning_rate:
+      args = list(args) + [True]
+      pwl_quantizer = pwl_multi_bit_quantizer(*args)
+      max_val = get_he_uniform_max_val(shape)
+      lr_adjustment = pwl_quantizer.lr_adjustment(max_val)
+
+    inputs = jnp.linspace(-max_val, max_val, 10001)
+    x = jax.lax.stop_gradient(inputs)  # replace tf.Variable
+
+    xq = quantizer.call_with_max_val(x, max_val)
+
+    unique_sorted_arr = jnp.sort(jnp.unique(xq))
+
+    # Get halfway values
+    boundary_points = (unique_sorted_arr[:-1] + unique_sorted_arr[1:]) / 2
+
+    # Check quantizer
+    if not jnp.allclose(boundary_points, initializer.remap_with_max_val(boundary_points, max_val), atol=0.001):
+      import pdb
+      pdb.set_trace()
+
+    # Element-wise gradient function
+    elementwise_grad = jax.vmap(jax.grad(lambda x_single: quantizer.call_with_max_val(jnp.array([x_single]), max_val)[0]))
+
+    # Apply it to each element of x
+    dy_dx = elementwise_grad(x)    
+    inv_integral_dy_dx = jnp.cumsum((1 / dy_dx) * (inputs[1] - inputs[0]))
+    zero_point = jnp.argmin(inputs ** 2)
+    if not jnp.isclose(inputs[zero_point], 0):
+      import pdb
+      pdb.set_trace()
+
+    inv_integral_dy_dx -= inv_integral_dy_dx[zero_point]
+
+    remap_vals = lr_adjustment * inv_integral_dy_dx
+
+    if not jnp.allclose(remap_vals, initializer.remap_with_max_val(inputs, max_val), rtol=0.04, atol=.02):
+      import pdb
+      pdb.set_trace()
+
+    regular_quantized = quantizer.call_with_max_val(inputs, max_val)
+    remapped_then_quantized = quantizer.call_with_max_val(
+      initializer.remap_with_max_val(inputs, max_val), max_val)
+    
+    if not jnp.allclose(regular_quantized, remapped_then_quantized):
+      import pdb
+      pdb.set_trace()
+
+
+  quantizer = dsq_multi_bit_quantizer
+  initializer = dsq_multi_bit_initializer
+  key = random.PRNGKey(1)
+  adjust_learning_rate = True
+
+  for shape in [(1, ), (10, ), (10, 9), (10, 9, 8, 7)]:
+    for bits in [2, 3, 4]:
+      for k in [1, 2, 3.5, 5]:
+        test_quantizer_and_initializer(
+            quantizer, initializer, key, shape, adjust_learning_rate, bits, k)
