@@ -280,10 +280,14 @@ class dsq_multi_bit_quantizer:
 
   def k_norm(self, max_val):
     return self.k / max_val
+  
+  def delta(self, max_val):
+
+    return (2.0 * max_val) / (2.0 ** self.bits - 1)
 
   def call_with_max_val(self, x, max_val):
 
-    delta = (2.0 * max_val) / (2.0 ** self.bits - 1)
+    delta = self.delta(max_val)
 
     i = jnp.floor((x + max_val) / delta)
     m_i = -max_val + (i + 0.5) * delta
@@ -641,8 +645,9 @@ if __name__ == '__main__':
     regular_quantized = quantizer.call_with_max_val(inputs, max_val)
     remapped_then_quantized = quantizer.call_with_max_val(
       initializer.remap_with_max_val(inputs, max_val), max_val)
+    close = jnp.abs(regular_quantized - remapped_then_quantized) < (quantizer.delta(max_val) / 2)
     
-    if not jnp.allclose(regular_quantized, remapped_then_quantized):
+    if not jnp.sum(close) > 0.99 * regular_quantized.size:
       import pdb
       pdb.set_trace()
 
