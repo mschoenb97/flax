@@ -437,7 +437,7 @@ def train_and_evaluate(
       state = sync_batch_stats(state)
       save_checkpoint(state, workdir)
   # May be worth trying to do this on the whole eval set
-  state = state.add_final_logits(next(eval_iter))
+  state = state.add_final_logits(eval_iter, steps_per_eval=steps_per_eval)
   # Wait until computations are done before exiting
   jax.random.normal(jax.random.key(0), ()).block_until_ready()
 

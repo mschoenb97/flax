@@ -483,9 +483,17 @@ class CustomTrainState(struct.PyTreeNode):
     self.history['val_loss'].append(test_loss)
     self.history['val_accuracy'].append(test_accuracy)
 
-  def add_final_logits(self, test_ds):
+  def add_final_logits(self, test_ds, steps_per_eval=None):
 
-    logits = self.apply_fn({'params': self.params}, test_ds['image'])
+    if steps_per_eval is None:
+      logits = self.apply_fn({'params': self.params}, test_ds['image'])
+    else:
+      logit_list = []
+      for _ in range(steps_per_eval):
+        eval_batch = next(test_ds)
+        logits = self.apply_fn({'params': self.params}, eval_batch)
+        logit_list.append(logits)
+      logits = jnp.concatenate(logit_list)
 
     return self.replace(
       final_logits=logits,
