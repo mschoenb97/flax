@@ -1,6 +1,6 @@
 config = {
-    'sgd_lr': 0.000001,
-    'sgd_epochs': 5,
+    'sgd_lr': 0.0001,
+    'sgd_epochs': 25,
     # 'sgd_epochs': 2,
     'adam_lr': 0.0001,
     'adam_epochs': 10,
@@ -14,14 +14,12 @@ config = {
     'other_bits': [],
     'bit_to_k_map': {
         4: 18,
-        2: 0.0001,
-        # 2: 6.5,
+        2: 6.5,
         1: 2,
     },
     'lr_jitter_scale': 0.01,
     'cache_data': True,
     'get_change_point_stats': True,
     'path': 'results',
-    'get_change_point_stats': False,
-    'epochs_interval': 1,
+    'epochs_interval': 10,
 }

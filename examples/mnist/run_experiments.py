@@ -163,13 +163,27 @@ def organize_change_point_data(change_points):
 
   return organized_change_points
 
+def get_min_delta(shape_tree, quantizer):
 
-def compare_change_point_data(quantizer_warp_cps, initializer_warp_cps):
+  min_delta = float('inf')
+
+  for shape in tree_util.tree_leaves(shape_tree):
+    max_val = matts_imports.get_he_uniform_max_val(shape)
+    delta = quantizer.delta(max_val)
+    min_delta = min(delta, min_delta)
+
+  return min_delta
+
+def compare_change_point_data(quantizer_warp_cps, initializer_warp_cps, 
+                              shape_tree):
 
   quantizer_warp_cps = organize_change_point_data(quantizer_warp_cps)
   initializer_warp_cps = organize_change_point_data(initializer_warp_cps)
 
   assert quantizer_warp_cps.keys() == initializer_warp_cps.keys()
+
+
+  min_delta = get_min_delta(shape_tree, quantizer)
 
   total_weights = 0
   correct_weight_sequences = 0
@@ -206,14 +220,13 @@ def compare_change_point_data(quantizer_warp_cps, initializer_warp_cps):
 
       correct_sequence = (
           (compressed_qsequence.shape == compressed_isequence.shape)
-          and np.allclose(compressed_qsequence['qvalue'], compressed_isequence['qvalue'])
+          and np.all(np.abs(compressed_qsequence['qvalue'] - compressed_isequence['qvalue']) < min_delta)
       )
 
       exact_correct_sequence = (
           (qsequence.shape == isequence.shape)
-          and np.allclose(qsequence['qvalue'], isequence['qvalue'])
+          and np.all(np.abs(qsequence['qvalue'] - isequence['qvalue']) < min_delta)
       )
-
 
       if correct_sequence:
         correct_weight_sequences += 1
@@ -439,36 +452,55 @@ def compute_distance_metric(
 
     assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
 
-    @matts_imports.conv_path_only()
-    def compute_total_sum(qstored_weight, istored_weight):
-      max_val = matts_imports.get_he_uniform_max_val(qstored_weight.shape)
-      return jnp.sum(jnp.abs(initializer.remap(qstored_weight) - istored_weight) / max_val)
-
-    @matts_imports.conv_path_only()
-    def compute_total_weights(qstored_weight):
-      return qstored_weight.size
-    
-    @matts_imports.conv_path_only()
-    def compute_total_qweight_agreements(qstored_weight, istored_weight):
-      return jnp.sum(jnp.array(quantizer(qstored_weight) == quantizer(istored_weight), dtype=jnp.float32))
-
     # Process the results to get distances and quantized_agreements
     distances = {}
     quantized_agreements = {}
     for key in istored_distances.keys():
 
-        total_sum = tree_util.tree_map_with_path(
-          compute_total_sum, qstored_weights[key], istored_weights[key])
-        total_weights = tree_util.tree_map_with_path(
-          compute_total_weights, qstored_weights[key])
-        total_qweight_agreements = tree_util.tree_map_with_path(
-          compute_total_qweight_agreements, qstored_weights[key], istored_weights[key])
-
-        distances[key] = (sum_tree_leaves(total_sum) / istored_distances[key]).item()
-        quantized_agreements[key] = (sum_tree_leaves(total_qweight_agreements) / 
-                                     sum_tree_leaves(total_weights)).item()
+      distances[key], quantized_agreements[key] = compute_distance_metric_for_tree(
+        qstored_weights[key], istored_weights[key], istored_distances[key],
+        initializer, quantizer,
+      )
 
     return distances, quantized_agreements
+
+
+def compute_distance_metric_for_tree(
+    qstored_weights_tree, istored_weights_tree, istored_distance, initializer, quantizer):
+
+
+    @matts_imports.conv_path_only(jit_compile=False)
+    def compute_total_sum(qstored_weight, istored_weight):
+      max_val = matts_imports.get_he_uniform_max_val(qstored_weight.shape)
+      return jnp.sum(jnp.abs(initializer.remap(qstored_weight) - istored_weight)) / max_val
+
+    @matts_imports.conv_path_only(jit_compile=False)
+    def compute_total_weights(qstored_weight):
+      return qstored_weight.size
+    
+    @matts_imports.conv_path_only(jit_compile=False)
+    def compute_total_qweight_agreements(qstored_weight, istored_weight):
+
+      max_val = matts_imports.get_he_uniform_max_val(qstored_weight.shape)
+
+      qq = quantizer(qstored_weight)
+      iq = quantizer(istored_weight)
+      close = jnp.abs(qq - iq) < (quantizer.delta(max_val) / 2)
+
+      return jnp.sum(close, dtype=jnp.float32)
+
+    total_sum = tree_util.tree_map_with_path(
+      compute_total_sum, qstored_weights_tree, istored_weights_tree)
+    total_weights = tree_util.tree_map_with_path(
+      compute_total_weights, qstored_weights_tree)
+    total_qweight_agreements = tree_util.tree_map_with_path(
+      compute_total_qweight_agreements, qstored_weights_tree, istored_weights_tree)
+
+    distance = (sum_tree_leaves(total_sum) / istored_distance).item()
+    quantized_agreements = (sum_tree_leaves(total_qweight_agreements) / 
+                                  sum_tree_leaves(total_weights)).item()
+
+    return distance, quantized_agreements
 
 
 def get_initializer(identifier_kwargs):
@@ -579,6 +611,19 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
 
   res = {}
 
+  warp_initializer = get_initializer(identifier_kwargs)
+  quantizer = _get_quantizer(identifier_kwargs)
+  init_distance, init_agreement = compute_distance_metric_for_tree(
+    quantizer_warp_data['weights_init'],
+    initializer_warp_data['weights_init'],
+    1,
+    warp_initializer,
+    quantizer, 
+  )
+
+  assert init_distance == 0, init_distance
+  assert init_agreement == 1.0, init_agreement
+
   if cache_data:
     actual_args = [
         quantizer_warp_data['change_points'],
@@ -590,8 +635,16 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
         actual_kwargs=actual_kwargs, path=path
     )
   else:
+    matts_imports.conv_path_only()
+    def conv_shape(weights):
+
+      return weights.tree
+    
+    shape_tree = tree_util.tree_map_with_path(
+      conv_shape, quantizer_warp_data['weights_init'])
+    quantizer = _get_quantizer(identifier_kwargs)
     change_point_res = compare_change_point_data(
-        quantizer_warp_data, initializer_warp_data)
+        quantizer_warp_data, initializer_warp_data, shape_tree, quantizer)
 
     change_point_results = get_change_point_results(
         change_point_res, quantizer_warp_data)
@@ -734,7 +787,8 @@ def run_full_analysis(config):
     os.makedirs(config['path'])
 
   res = {}
-  optimizer_types = ['sgd', 'adam']
+  # optimizer_types = ['sgd', 'adam']
+  optimizer_types = ['sgd']
 
   # run models for both optimizers
   for opt_type in optimizer_types:
@@ -750,57 +804,57 @@ def run_full_analysis(config):
         path=config['path'])
     res[opt_type] = results
 
-    jitter_kwargs = get_train_kwargs(config, opt_type, jitter=True)
-    quantizer_warp_data_jitter, _ = run_models_from_kwargs(jitter_kwargs, config)
-    jitter_results = run_analysis_for_one(
-        quantizer_warp_data,
-        quantizer_warp_data_jitter,
-        jitter_kwargs,
-        f"{opt_type}_jitter",
-        cache_data=config['cache_data'],
-        path=config['path'])
-    res[f"{opt_type}_jitter"] = jitter_results
+  #   jitter_kwargs = get_train_kwargs(config, opt_type, jitter=True)
+  #   quantizer_warp_data_jitter, _ = run_models_from_kwargs(jitter_kwargs, config)
+  #   jitter_results = run_analysis_for_one(
+  #       quantizer_warp_data,
+  #       quantizer_warp_data_jitter,
+  #       jitter_kwargs,
+  #       f"{opt_type}_jitter",
+  #       cache_data=config['cache_data'],
+  #       path=config['path'])
+  #   res[f"{opt_type}_jitter"] = jitter_results
 
-    scaledown_kwargs = get_train_kwargs(config, opt_type, scaledown=True)
-    quantizer_warp_data_scaledown, initializer_warp_data_scaledown = run_models_from_kwargs(
-        scaledown_kwargs, config)
-    scaledown_results = run_analysis_for_one(
-        quantizer_warp_data_scaledown,
-        initializer_warp_data_scaledown,
-        scaledown_kwargs,
-        f"{opt_type}_scaledown",
-        cache_data=config['cache_data'],
-        path=config['path'])
-    res[f"{opt_type}_scaledown"] = scaledown_results
+  #   scaledown_kwargs = get_train_kwargs(config, opt_type, scaledown=True)
+  #   quantizer_warp_data_scaledown, initializer_warp_data_scaledown = run_models_from_kwargs(
+  #       scaledown_kwargs, config)
+  #   scaledown_results = run_analysis_for_one(
+  #       quantizer_warp_data_scaledown,
+  #       initializer_warp_data_scaledown,
+  #       scaledown_kwargs,
+  #       f"{opt_type}_scaledown",
+  #       cache_data=config['cache_data'],
+  #       path=config['path'])
+  #   res[f"{opt_type}_scaledown"] = scaledown_results
 
-  # run without warp_initialize for sgd
-  no_warp_kwargs = get_train_kwargs(config, 'sgd')
-  no_warp_kwargs['warp_initialize'] = False
-  quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
-        no_warp_kwargs, config)
-  no_warp_results = run_analysis_for_one(
-      quantizer_warp_data,
-      initializer_warp_data,
-      no_warp_kwargs,
-      'sgd_no_warp',
-      cache_data=config['cache_data'],
-      path=config['path'])
-  res['sgd_no_warp'] = no_warp_results
+  # # run without warp_initialize for sgd
+  # no_warp_kwargs = get_train_kwargs(config, 'sgd')
+  # no_warp_kwargs['warp_initialize'] = False
+  # quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
+  #       no_warp_kwargs, config)
+  # no_warp_results = run_analysis_for_one(
+  #     quantizer_warp_data,
+  #     initializer_warp_data,
+  #     no_warp_kwargs,
+  #     'sgd_no_warp',
+  #     cache_data=config['cache_data'],
+  #     path=config['path'])
+  # res['sgd_no_warp'] = no_warp_results
 
-  # run models for other bits
-  for bits in config['other_bits']:
-    bits_kwargs = get_quantizer_kwargs(config, bits)
-    quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
-        bits_kwargs, config)
-    bits_results = run_analysis_for_one(
-        quantizer_warp_data,
-        initializer_warp_data,
-        bits_kwargs,
-        f"{bits}_bits",
-        cache_data=config['cache_data'],
-        path=config['path'])
+  # # run models for other bits
+  # for bits in config['other_bits']:
+  #   bits_kwargs = get_quantizer_kwargs(config, bits)
+  #   quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
+  #       bits_kwargs, config)
+  #   bits_results = run_analysis_for_one(
+  #       quantizer_warp_data,
+  #       initializer_warp_data,
+  #       bits_kwargs,
+  #       f"{bits}_bits",
+  #       cache_data=config['cache_data'],
+  #       path=config['path'])
 
-    res[f"{bits}_bits"] = bits_results
+  #   res[f"{bits}_bits"] = bits_results
 
   res = convert_all_float32_to_float(res)
   res = jax_to_numpy(res)
