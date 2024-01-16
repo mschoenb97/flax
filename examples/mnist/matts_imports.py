@@ -173,7 +173,7 @@ def get_initializer_from_config(config):
 # Optimizers
 
 
-def get_optimizer_from_config(config):
+def get_optimizer_from_config(config, learning_rate_fn=None):
     """
     Creates an optax optimizer based on the given configuration.
 
@@ -194,20 +194,22 @@ def get_optimizer_from_config(config):
     decay_steps = config['decay_steps']
 
     # Learning rate schedule
-    lr_schedule = optax.join_schedules(
-        schedules=[
-            optax.linear_schedule(init_value=initial_lr, end_value=lr_warmup_target, transition_steps=warmup_steps),
-            optax.cosine_decay_schedule(init_value=lr_warmup_target, decay_steps=decay_steps)
-        ],
-        boundaries=[warmup_steps]
-    )
+    if learning_rate_fn is None:
+      learning_rate_fn = optax.join_schedules(
+          schedules=[
+              optax.linear_schedule(init_value=initial_lr, end_value=lr_warmup_target, transition_steps=warmup_steps),
+              optax.cosine_decay_schedule(init_value=lr_warmup_target, decay_steps=decay_steps)
+          ],
+          boundaries=[warmup_steps]
+      )
+
 
     # Selecting the optimizer
     if optimizer_type == 'sgd':
-        # return optax.chain(optax.trace(decay=momentum, nesterov=False), optax.scale_by_schedule(lr_schedule))
-        return optax.sgd(learning_rate=lr_schedule, momentum=momentum)
+        # return optax.chain(optax.trace(decay=momentum, nesterov=False), optax.scale_by_schedule(learning_rate_fn))
+        return optax.sgd(learning_rate=learning_rate_fn, momentum=momentum)
     elif optimizer_type == 'adam':
-        return optax.adam(learning_rate=lr_schedule, b2=0.95)
+        return optax.adam(learning_rate=learning_rate_fn, b2=0.95)
     else:
         raise ValueError(f"Unsupported optimizer type: {optimizer_type}")
 

@@ -257,7 +257,8 @@ def create_train_state(
 
   params, batch_stats = initialized(rng, image_size, model)
   quantizer = matts_imports.get_quantizer_from_config(config)
-  tx = matts_imports.get_optimizer_from_config(config)
+  tx = matts_imports.get_optimizer_from_config(
+    config, learning_rate_fn=learning_rate_fn)
   state = matts_imports.CustomTrainState.create(
       apply_fn=model.apply,
       params=params,
@@ -425,16 +426,16 @@ def train_and_evaluate(
           step + 1, {f'eval_{key}': val for key, val in summary.items()}
       )
       writer.flush()
+      state = state.apply_epoch_updates()
+      state.update_history(
+        summary['train_loss'], 
+        summary['loss'], 
+        summary['train_accuracy'], 
+        summary['accuracy'],
+      )
     if (step + 1) % steps_per_checkpoint == 0 or step + 1 == num_steps:
       state = sync_batch_stats(state)
       save_checkpoint(state, workdir)
-    state = state.apply_epoch_updates()
-    state.update_history(
-      summary['train_loss'], 
-      summary['loss'], 
-      summary['train_accuracy'], 
-      summary['test_accuracy'],
-    )
   # May be worth trying to do this on the whole eval set
   state = state.add_final_logits(next(eval_iter))
   # Wait until computations are done before exiting

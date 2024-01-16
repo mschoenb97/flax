@@ -178,6 +178,11 @@ def train_and_evaluate(
     summary_writer.scalar('test_accuracy', test_accuracy, epoch)
     state.update_history(
       train_loss, test_loss, train_accuracy, test_accuracy)
+    train_loss = train_loss.item()
+    test_loss = test_loss.item()
+    train_accuracy = train_accuracy.item()
+    test_accuracy = test_accuracy.item()
+
     print(f'{train_loss = }, {test_loss = }, {train_accuracy = }, {test_accuracy = }')
 
   state = state.add_final_logits(test_ds)
