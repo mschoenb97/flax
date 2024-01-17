@@ -163,19 +163,18 @@ def organize_change_point_data(change_points):
 
   return organized_change_points
 
-def get_min_delta(shape_tree, quantizer):
+def get_min_delta(max_val_tree, quantizer):
 
   min_delta = float('inf')
 
-  for shape in tree_util.tree_leaves(shape_tree):
-    max_val = matts_imports.get_he_uniform_max_val(shape)
+  for max_val in tree_util.tree_leaves(max_val_tree):
     delta = quantizer.delta(max_val)
     min_delta = min(delta, min_delta)
 
   return min_delta
 
 def compare_change_point_data(quantizer_warp_cps, initializer_warp_cps, 
-                              shape_tree):
+                              max_val_tree, quantizer):
 
   quantizer_warp_cps = organize_change_point_data(quantizer_warp_cps)
   initializer_warp_cps = organize_change_point_data(initializer_warp_cps)
@@ -183,7 +182,7 @@ def compare_change_point_data(quantizer_warp_cps, initializer_warp_cps,
   assert quantizer_warp_cps.keys() == initializer_warp_cps.keys()
 
 
-  min_delta = get_min_delta(shape_tree, quantizer)
+  min_delta = get_min_delta(max_val_tree, quantizer)
 
   total_weights = 0
   correct_weight_sequences = 0
@@ -624,10 +623,21 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
   assert init_distance == 0, init_distance
   assert init_agreement == 1.0, init_agreement
 
+  @matts_imports.conv_path_only(jit_compile=False)
+  def conv_max_val(weights):
+
+    return matts_imports.get_he_uniform_max_val(weights.shape)
+  
+  max_val_tree = tree_util.tree_map_with_path(
+    conv_max_val, quantizer_warp_data['weights_init'])
+  quantizer = _get_quantizer(identifier_kwargs)
+
   if cache_data:
     actual_args = [
         quantizer_warp_data['change_points'],
-        initializer_warp_data['change_points']
+        initializer_warp_data['change_points'],
+        max_val_tree,
+        quantizer,
     ]
     actual_kwargs = {}
     change_point_res = save_or_load_output(
@@ -635,16 +645,8 @@ def run_analysis_for_one(quantizer_warp_data, initializer_warp_data,
         actual_kwargs=actual_kwargs, path=path
     )
   else:
-    matts_imports.conv_path_only()
-    def conv_shape(weights):
-
-      return weights.tree
-    
-    shape_tree = tree_util.tree_map_with_path(
-      conv_shape, quantizer_warp_data['weights_init'])
-    quantizer = _get_quantizer(identifier_kwargs)
     change_point_res = compare_change_point_data(
-        quantizer_warp_data, initializer_warp_data, shape_tree, quantizer)
+        quantizer_warp_data, initializer_warp_data, max_val_tree, quantizer)
 
     change_point_results = get_change_point_results(
         change_point_res, quantizer_warp_data)
@@ -787,8 +789,8 @@ def run_full_analysis(config):
     os.makedirs(config['path'])
 
   res = {}
-  # optimizer_types = ['sgd', 'adam']
-  optimizer_types = ['sgd']
+  optimizer_types = ['sgd', 'adam']
+  # optimizer_types = ['sgd']
 
   # run models for both optimizers
   for opt_type in optimizer_types:
