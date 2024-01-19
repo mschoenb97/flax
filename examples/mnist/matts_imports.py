@@ -79,10 +79,6 @@ class ste_initializer:
   def remap(self, x):
 
     return x
-  
-  def remap_with_max_val(self, x, _):
-
-    return self.remap(x)
 
   def __call__(self, key: KeyArray,
                 shape: jax_core.Shape,

@@ -426,7 +426,6 @@ def train_and_evaluate(
           step + 1, {f'eval_{key}': val for key, val in summary.items()}
       )
       writer.flush()
-      state = state.apply_epoch_updates()
       state.update_history(
         summary['train_loss'], 
         summary['loss'], 

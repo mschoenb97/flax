@@ -63,7 +63,6 @@ def train_corresponding_models(*, epochs, optimizer, binary,
                                k, bits, steps_per_epoch, initial_learning_rate, 
                                warmup_target, warmup_steps,
                                decay_steps, warp_initialize, get_change_point_stats,
-                              #  epochs_interval
                                ):
   """Get histories for both the Standard initializer with the tanh gradient and
   the warped initializer with the STE gradient"""
@@ -81,7 +80,6 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
   config.get_change_point_stats = get_change_point_stats
-  # config.epochs_interval = epochs_interval
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
@@ -445,23 +443,6 @@ def sum_tree_leaves(tree):
     leaves = tree_util.tree_leaves(tree)
     return sum(leaf for leaf in leaves if leaf is not None)
 
-# def compute_distance_metric(
-#     qstored_weights, istored_weights, istored_distances, initializer, quantizer):
-
-#     assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
-
-#     # Process the results to get distances and quantized_agreements
-#     distances = {}
-#     quantized_agreements = {}
-#     for key in istored_distances.keys():
-
-#       distances[key], quantized_agreements[key] = compute_distance_metric_for_tree(
-#         qstored_weights[key], istored_weights[key], istored_distances[key],
-#         initializer, quantizer,
-#       )
-
-#     return distances, quantized_agreements
-
 
 def compute_distance_metric_for_tree(
     qstored_weights_tree, istored_weights_tree, istored_distance, initializer, quantizer):
@@ -722,7 +703,6 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
       'optimizer': optimizer,
       'warp_initialize': warp_initialize,
       'get_change_point_stats': config['get_change_point_stats'],
-      # 'epochs_interval': config['epochs_interval'],
       # 'weight_decay': weight_decay,
   }
 
@@ -806,57 +786,57 @@ def run_full_analysis(config):
         path=config['path'])
     res[opt_type] = results
 
-  #   jitter_kwargs = get_train_kwargs(config, opt_type, jitter=True)
-  #   quantizer_warp_data_jitter, _ = run_models_from_kwargs(jitter_kwargs, config)
-  #   jitter_results = run_analysis_for_one(
-  #       quantizer_warp_data,
-  #       quantizer_warp_data_jitter,
-  #       jitter_kwargs,
-  #       f"{opt_type}_jitter",
-  #       cache_data=config['cache_data'],
-  #       path=config['path'])
-  #   res[f"{opt_type}_jitter"] = jitter_results
+    jitter_kwargs = get_train_kwargs(config, opt_type, jitter=True)
+    quantizer_warp_data_jitter, _ = run_models_from_kwargs(jitter_kwargs, config)
+    jitter_results = run_analysis_for_one(
+        quantizer_warp_data,
+        quantizer_warp_data_jitter,
+        jitter_kwargs,
+        f"{opt_type}_jitter",
+        cache_data=config['cache_data'],
+        path=config['path'])
+    res[f"{opt_type}_jitter"] = jitter_results
 
-  #   scaledown_kwargs = get_train_kwargs(config, opt_type, scaledown=True)
-  #   quantizer_warp_data_scaledown, initializer_warp_data_scaledown = run_models_from_kwargs(
-  #       scaledown_kwargs, config)
-  #   scaledown_results = run_analysis_for_one(
-  #       quantizer_warp_data_scaledown,
-  #       initializer_warp_data_scaledown,
-  #       scaledown_kwargs,
-  #       f"{opt_type}_scaledown",
-  #       cache_data=config['cache_data'],
-  #       path=config['path'])
-  #   res[f"{opt_type}_scaledown"] = scaledown_results
+    scaledown_kwargs = get_train_kwargs(config, opt_type, scaledown=True)
+    quantizer_warp_data_scaledown, initializer_warp_data_scaledown = run_models_from_kwargs(
+        scaledown_kwargs, config)
+    scaledown_results = run_analysis_for_one(
+        quantizer_warp_data_scaledown,
+        initializer_warp_data_scaledown,
+        scaledown_kwargs,
+        f"{opt_type}_scaledown",
+        cache_data=config['cache_data'],
+        path=config['path'])
+    res[f"{opt_type}_scaledown"] = scaledown_results
 
-  # # run without warp_initialize for sgd
-  # no_warp_kwargs = get_train_kwargs(config, 'sgd')
-  # no_warp_kwargs['warp_initialize'] = False
-  # quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
-  #       no_warp_kwargs, config)
-  # no_warp_results = run_analysis_for_one(
-  #     quantizer_warp_data,
-  #     initializer_warp_data,
-  #     no_warp_kwargs,
-  #     'sgd_no_warp',
-  #     cache_data=config['cache_data'],
-  #     path=config['path'])
-  # res['sgd_no_warp'] = no_warp_results
+  # run without warp_initialize for sgd
+  no_warp_kwargs = get_train_kwargs(config, 'sgd')
+  no_warp_kwargs['warp_initialize'] = False
+  quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
+        no_warp_kwargs, config)
+  no_warp_results = run_analysis_for_one(
+      quantizer_warp_data,
+      initializer_warp_data,
+      no_warp_kwargs,
+      'sgd_no_warp',
+      cache_data=config['cache_data'],
+      path=config['path'])
+  res['sgd_no_warp'] = no_warp_results
 
-  # # run models for other bits
-  # for bits in config['other_bits']:
-  #   bits_kwargs = get_quantizer_kwargs(config, bits)
-  #   quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
-  #       bits_kwargs, config)
-  #   bits_results = run_analysis_for_one(
-  #       quantizer_warp_data,
-  #       initializer_warp_data,
-  #       bits_kwargs,
-  #       f"{bits}_bits",
-  #       cache_data=config['cache_data'],
-  #       path=config['path'])
+  # run models for other bits
+  for bits in config['other_bits']:
+    bits_kwargs = get_quantizer_kwargs(config, bits)
+    quantizer_warp_data, initializer_warp_data = run_models_from_kwargs(
+        bits_kwargs, config)
+    bits_results = run_analysis_for_one(
+        quantizer_warp_data,
+        initializer_warp_data,
+        bits_kwargs,
+        f"{bits}_bits",
+        cache_data=config['cache_data'],
+        path=config['path'])
 
-  #   res[f"{bits}_bits"] = bits_results
+    res[f"{bits}_bits"] = bits_results
 
   res = convert_all_float32_to_float(res)
   res = jax_to_numpy(res)
