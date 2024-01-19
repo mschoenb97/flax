@@ -103,7 +103,6 @@ def train_epoch(state, train_ds, batch_size, rng):
     epoch_accuracy.append(accuracy)
   train_loss = np.mean(epoch_loss)
   train_accuracy = np.mean(epoch_accuracy)
-  state = state.apply_epoch_updates()
   return state, train_loss, train_accuracy
 
 
@@ -115,7 +114,6 @@ def get_datasets():
   test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
   train_ds['image'] = jnp.float32(train_ds['image']) / 255.0
   test_ds['image'] = jnp.float32(test_ds['image']) / 255.0
-
   return train_ds, test_ds
 
 
