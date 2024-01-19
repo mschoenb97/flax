@@ -50,9 +50,7 @@ def train_model(config):
       'weights_final': tree_util.tree_map_with_path(matts_imports.conv_only, state.params),
       'change_points': cleaned_change_points,
       'total_batches': state.step,
-      'stored_weights': state.stored_weights,
       'distance_traveled': state.distance_traveled,
-      'stored_distances': state.stored_distances,
       'correct_output_values': state.correct_output_values,  # Add the correct output values
       'model_predictions': state.final_logits  # Add the model's predictions
   }
@@ -65,7 +63,8 @@ def train_corresponding_models(*, epochs, optimizer, binary,
                                k, bits, steps_per_epoch, initial_learning_rate, 
                                warmup_target, warmup_steps,
                                decay_steps, warp_initialize, get_change_point_stats,
-                               epochs_interval):
+                              #  epochs_interval
+                               ):
   """Get histories for both the Standard initializer with the tanh gradient and
   the warped initializer with the STE gradient"""
 
@@ -82,7 +81,7 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   config.num_epochs = epochs
   config.batch_size = NUM_SAMPLES // steps_per_epoch
   config.get_change_point_stats = get_change_point_stats
-  config.epochs_interval = epochs_interval
+  # config.epochs_interval = epochs_interval
 
   quantizer_warp_model_config = deepcopy(config)
   initializer_warp_model_config = deepcopy(config)
@@ -446,22 +445,22 @@ def sum_tree_leaves(tree):
     leaves = tree_util.tree_leaves(tree)
     return sum(leaf for leaf in leaves if leaf is not None)
 
-def compute_distance_metric(
-    qstored_weights, istored_weights, istored_distances, initializer, quantizer):
+# def compute_distance_metric(
+#     qstored_weights, istored_weights, istored_distances, initializer, quantizer):
 
-    assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
+#     assert qstored_weights.keys() == istored_weights.keys() == istored_distances.keys()
 
-    # Process the results to get distances and quantized_agreements
-    distances = {}
-    quantized_agreements = {}
-    for key in istored_distances.keys():
+#     # Process the results to get distances and quantized_agreements
+#     distances = {}
+#     quantized_agreements = {}
+#     for key in istored_distances.keys():
 
-      distances[key], quantized_agreements[key] = compute_distance_metric_for_tree(
-        qstored_weights[key], istored_weights[key], istored_distances[key],
-        initializer, quantizer,
-      )
+#       distances[key], quantized_agreements[key] = compute_distance_metric_for_tree(
+#         qstored_weights[key], istored_weights[key], istored_distances[key],
+#         initializer, quantizer,
+#       )
 
-    return distances, quantized_agreements
+#     return distances, quantized_agreements
 
 
 def compute_distance_metric_for_tree(
@@ -521,10 +520,10 @@ def get_distance_metric(quantizer_warp_data, initializer_warp_data, identifier_k
 
   warp_initializer = get_initializer(identifier_kwargs)
   quantizer = _get_quantizer(identifier_kwargs)
-  distances, quantized_agreements = compute_distance_metric(
-      quantizer_warp_data['stored_weights'],
-      initializer_warp_data['stored_weights'],
-      initializer_warp_data['stored_distances'],
+  distances, quantized_agreements = compute_distance_metric_for_tree(
+      quantizer_warp_data['weights_final'],
+      initializer_warp_data['weights_final'],
+      initializer_warp_data['distance_traveled'],
       warp_initializer,
       quantizer
   )
@@ -723,7 +722,7 @@ def get_train_kwargs(config, optimizer_type, jitter=False, scaledown=False):
       'optimizer': optimizer,
       'warp_initialize': warp_initialize,
       'get_change_point_stats': config['get_change_point_stats'],
-      'epochs_interval': config['epochs_interval'],
+      # 'epochs_interval': config['epochs_interval'],
       # 'weight_decay': weight_decay,
   }
 

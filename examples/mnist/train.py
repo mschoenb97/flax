@@ -115,6 +115,7 @@ def get_datasets():
   test_ds = tfds.as_numpy(ds_builder.as_dataset(split='test', batch_size=-1))
   train_ds['image'] = jnp.float32(train_ds['image']) / 255.0
   test_ds['image'] = jnp.float32(test_ds['image']) / 255.0
+
   return train_ds, test_ds
 
 

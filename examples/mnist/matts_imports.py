@@ -438,7 +438,6 @@ class CustomTrainState(struct.PyTreeNode):
 
   # Original train_state fields
   step: int
-  epochs_interval: int
   get_change_point_stats: bool
 
   apply_fn: Callable = struct.field(pytree_node=False)
@@ -448,14 +447,11 @@ class CustomTrainState(struct.PyTreeNode):
   opt_state: optax.OptState = struct.field(pytree_node=True)
   # Quantization fields
   quantizer: struct.dataclass
-  epochs_interval: int
   last_quantized: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   change_points: core.FrozenDict[str, Any] = struct.field(pytree_node=True)
   history: dict = field(default_factory=dict)
   # quantized_vals_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
   # points_changed_list: List[core.FrozenDict[str, Any]] = field(default_factory=list)
-  stored_weights: dict = field(default_factory=dict)
-  stored_distances: dict = field(default_factory=dict)
   distance_traveled: float = 0
   epoch: int = 0
   final_logits: Optional[Array] = None
@@ -575,7 +571,6 @@ class CustomTrainState(struct.PyTreeNode):
     partial_get_change_points = partial(get_change_point_data, step=0)
     ones = tree_map_with_path(conv_ones, params)
     quantized_params = tree_map_with_path(partial_get_quantized, params)
-    epochs_interval = config.epochs_interval
     get_change_point_stats = config.get_change_point_stats
 
 
@@ -589,7 +584,7 @@ class CustomTrainState(struct.PyTreeNode):
         quantizer=quantizer,
         last_quantized=quantized_params,
         change_points=tree_map_with_path(partial_get_change_points, ones, quantized_params),
-        epochs_interval=epochs_interval,
+        initial_weights=tree_map_with_path(conv_only, params),
         get_change_point_stats=get_change_point_stats,
         **kwargs,
     )
