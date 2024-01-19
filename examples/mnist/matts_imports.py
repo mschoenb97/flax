@@ -79,6 +79,10 @@ class ste_initializer:
   def remap(self, x):
 
     return x
+  
+  def remap_with_max_val(self, x, _):
+
+    return self.remap(x)
 
   def __call__(self, key: KeyArray,
                 shape: jax_core.Shape,
@@ -331,7 +335,7 @@ def get_quantizer_from_config(config):
   k = config.get('k')
 
   if quantizer_type == 'pwl':
-    adjust_learning_rate = config.get('warp_initilize', False)
+    adjust_learning_rate = config.get('warp_initialize')
     return pwl_multi_bit_quantizer(bits=bits, k=k, adjust_learning_rate=adjust_learning_rate)
   elif quantizer_type == 'dsq':
     return dsq_multi_bit_quantizer(bits=bits, k=k)
@@ -459,16 +463,6 @@ class CustomTrainState(struct.PyTreeNode):
   initial_weights: Optional[Array] = None
   batch_stats: Optional[Any] = None
   dynamic_scale: Optional[dynamic_scale_lib.DynamicScale] = None
-
-  def apply_epoch_updates(self):
-
-    new_epoch = self.epoch + 1
-    if (new_epoch) % self.epochs_interval == 0:
-      self.stored_weights[int(new_epoch)] = tree_map_with_path(conv_only, self.params)
-      # Store the current distance_traveled
-      self.stored_distances[int(new_epoch)] = self.distance_traveled
-
-    return self.replace(epoch=self.epoch + 1)
   
   def update_history(self, train_loss, test_loss, train_accuracy, test_accuracy):
 

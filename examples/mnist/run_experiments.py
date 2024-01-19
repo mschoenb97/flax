@@ -91,7 +91,7 @@ def train_corresponding_models(*, epochs, optimizer, binary,
   initializer_warp_model_config.quantizer_type = 'pwl'
 
   quantizer_warp_model_config.initializer_type = 'ste'
-  initializer_warp_model_config.initializer_type = 'dsq'
+  initializer_warp_model_config.initializer_type = 'dsq' if warp_initialize else 'ste'
 
   # get quantizer warp model data
   quantizer_warp_data = train_model(quantizer_warp_model_config)
@@ -789,8 +789,9 @@ def run_full_analysis(config):
     os.makedirs(config['path'])
 
   res = {}
-  optimizer_types = ['sgd', 'adam']
+  # optimizer_types = ['sgd', 'adam']
   # optimizer_types = ['sgd']
+  optimizer_types = ['adam']
 
   # run models for both optimizers
   for opt_type in optimizer_types:

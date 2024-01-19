@@ -1,9 +1,9 @@
 config = {
-    'sgd_lr': 0.0001,
+    'sgd_lr': 0.001,
     'sgd_epochs': 25,
     # 'sgd_epochs': 2,
     'adam_lr': 0.0001,
-    'adam_epochs': 10,
+    'adam_epochs': 25,
     # 'adam_epochs': 2,
     'lr_scaledown': 0.1,
     'epoch_scale_up_for_lr_scale_down': 3,
